@@ -4,7 +4,6 @@ import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { join } from 'node:path';
 import { timingSafeEqual } from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
 import { AppModule } from './app.module';
@@ -51,14 +50,12 @@ async function bootstrap(): Promise<void> {
   };
 
   app.set('trust proxy', 1);
-  app.use('/admin.html', adminAuth);
   app.use('/api/admin', adminAuth);
   app.use('/docs', adminAuth);
   app.use('/docs-json', adminAuth);
-  app.useStaticAssets(join(process.cwd(), 'frontend'));
   app.setGlobalPrefix('api');
   app.enableCors({
-    origin: config.get<string>('API_CORS_ORIGIN', 'http://localhost:5173')
+    origin: config.get<string>('API_CORS_ORIGIN', 'http://localhost:3001')
       .split(',')
       .map((origin) => origin.trim()),
     credentials: true,

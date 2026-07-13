@@ -5,3 +5,4 @@ npm-debug.log*
 dist/
 coverage/
 *.zip
+5x5-front/

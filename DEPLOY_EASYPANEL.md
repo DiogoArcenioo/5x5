@@ -1,29 +1,25 @@
-# Deploy do 5x5 no Easypanel
+# Deploy da API no Easypanel
 
-O backend NestJS serve a API, o site público e o painel administrativo no mesmo container e na mesma porta.
+Este repositório publica somente o backend NestJS. O frontend é implantado separadamente a partir de [DiogoArcenioo/5x5-front](https://github.com/DiogoArcenioo/5x5-front).
 
-## 1. Criar o serviço
+## Serviço do backend
 
-No projeto que já contém o PostgreSQL:
+Crie um serviço de aplicativo com estas opções:
 
-1. Clique em **+ Serviço**.
-2. Selecione **Aplicativo**.
-3. Use o nome `5x5-app`.
-4. Em **Source**, escolha GitHub/Git Repository.
-5. Repositório: `https://github.com/DiogoArcenioo/5x5.git`.
-6. Branch: `main`.
-7. Build method: **Dockerfile**.
-8. Dockerfile path: `Dockerfile`.
+- nome sugerido: `5x5-back`;
+- repositório: `https://github.com/DiogoArcenioo/5x5.git`;
+- branch: `main`;
+- método de build: Dockerfile;
+- Dockerfile: `Dockerfile`;
+- porta interna/proxy: `3000`.
 
-## 2. Variáveis de ambiente
-
-Cadastre no serviço de aplicação:
+Variáveis:
 
 ```dotenv
 NODE_ENV=production
 API_HOST=0.0.0.0
 API_PORT=3000
-DB_HOST=host-do-postgres
+DB_HOST=host-interno-do-postgres
 DB_PORT=5432
 DB_NAME=counter_db
 DB_USER=usuario-do-postgres
@@ -32,61 +28,34 @@ DB_SSL=false
 DB_LOGGING=false
 ADMIN_USERNAME=seu-usuario-admin
 ADMIN_PASSWORD=uma-senha-longa-e-exclusiva
-API_CORS_ORIGIN=https://seu-dominio
+API_CORS_ORIGIN=https://dominio-do-frontend
 ```
 
-Preferencialmente, use o host e a porta da conexão **interna** exibida pelo serviço PostgreSQL no Easypanel. Se usar a conexão externa existente, mantenha o host e a porta externa que já funcionam no `.env` local.
+Use preferencialmente o host e a porta internos do PostgreSQL. Salve as variáveis antes de implantar.
 
-Não coloque essas credenciais no GitHub.
+## Validação
 
-`ADMIN_USERNAME` e `ADMIN_PASSWORD` protegem:
-
-- `/admin.html`;
-- `/api/admin/*`;
-- `/docs` e `/docs-json`.
-
-A aplicação recusa iniciar em produção se essas duas variáveis estiverem ausentes.
-
-## 3. Domínio e proxy
-
-Na área **Domains & Proxy**:
-
-1. Adicione um domínio gerado pelo Easypanel ou seu domínio próprio.
-2. Configure o proxy para a porta interna `3000`.
-3. Marque o domínio como primário.
-4. Ative HTTPS/Let's Encrypt.
-
-Não é necessário publicar manualmente uma porta do container.
-
-## 4. Banco de dados
-
-O banco atual já possui a migração inicial. Se estiver usando um banco novo, abra o console do serviço da aplicação e execute:
-
-```sh
-npm run db:migrate
-```
-
-Não é necessário criar volume para a aplicação. Os dados persistentes ficam no PostgreSQL.
-
-## 5. Deploy e validação
-
-Clique em **Deploy** e acompanhe os logs. Depois valide:
+Depois do deploy, valide:
 
 ```text
-https://seu-dominio/api/health
-https://seu-dominio/
-https://seu-dominio/admin.html
+https://dominio-do-backend/api/health
+https://dominio-do-backend/docs
 ```
 
-O healthcheck do container também consulta `/api/health` automaticamente.
+A raiz do domínio retorna `404` intencionalmente. Este serviço não entrega páginas HTML.
 
-## 6. Atualizações automáticas
+No serviço do frontend, configure:
 
-Depois do primeiro deploy funcionar, habilite **Auto Deploy** para que pushes futuros na branch `main` iniciem um novo deploy.
+```dotenv
+BACKEND_URL=http://nome-interno-do-servico-backend:3000
+ADMIN_USERNAME=mesmo-usuario-do-backend
+ADMIN_PASSWORD=mesma-senha-administrativa-do-backend
+```
 
-## Segurança antes de publicar
+## Segurança
 
-- Troque a senha do PostgreSQL que apareceu em capturas de tela anteriores.
-- Use uma senha administrativa diferente da senha do banco.
-- Não exponha a porta externa do PostgreSQL se ela não for necessária.
-- Prefira a rede interna do Easypanel entre aplicação e banco.
+- não publique arquivos `.env`;
+- use uma senha administrativa diferente da senha do banco;
+- não exponha a porta do PostgreSQL sem necessidade;
+- prefira a rede interna entre PostgreSQL, Nest e Next;
+- troque qualquer credencial que já tenha aparecido em capturas de tela.
