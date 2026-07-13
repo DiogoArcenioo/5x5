@@ -1,0 +1,39 @@
+{
+  "name": "counter-5x5-api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "NestJS and TypeORM administration API for the 5x5 Counter-Strike games.",
+  "scripts": {
+    "build": "nest build",
+    "start": "nest start",
+    "start:dev": "nest start --watch",
+    "start:prod": "node dist/main.js",
+    "typecheck": "tsc --noEmit",
+    "db:migrate": "node database/migrate.js",
+    "db:verify": "node database/verify.js"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.1.9",
+    "@nestjs/config": "^4.0.2",
+    "@nestjs/core": "^11.1.9",
+    "@nestjs/platform-express": "^11.1.9",
+    "@nestjs/swagger": "^11.2.3",
+    "@nestjs/typeorm": "^11.0.0",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.2",
+    "dotenv": "^17.2.3",
+    "pg": "^8.16.3",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "typeorm": "^0.3.28"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.14",
+    "@nestjs/schematics": "^11.0.9",
+    "@types/express": "^5.0.5",
+    "@types/node": "^24.10.1",
+    "source-map-support": "^0.5.21",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}
