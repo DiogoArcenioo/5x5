@@ -47,7 +47,25 @@ O TypeORM usa `synchronize: false`. Mudanças estruturais devem ser feitas por n
 - `GET /api/admin/data/resources`
 - `GET/POST/PATCH/DELETE /api/admin/data/:resource`
 
-Os endpoints `/api/admin/*`, `/docs` e `/docs-json` usam HTTP Basic quando `ADMIN_USERNAME` e `ADMIN_PASSWORD` estão configurados. Em produção, o backend não inicia sem essas variáveis.
+Os endpoints `/api/admin/*` exigem uma sessão Bearer de um usuário com papel `admin`.
+
+## Usuários e autenticação
+
+- `POST /api/auth/register`: cria sempre um usuário comum;
+- `POST /api/auth/login`: autentica e cria uma sessão de sete dias;
+- `GET /api/auth/me`: retorna o usuário da sessão;
+- `POST /api/auth/logout`: revoga a sessão atual.
+
+As senhas são armazenadas com scrypt e salt individual. Os tokens entregues ao cliente não são persistidos diretamente: o banco armazena somente o hash SHA-256 do token.
+
+Para inicializar um administrador em um banco novo:
+
+```powershell
+npm run db:migrate
+$env:ADMIN_SEED_USERNAME='admin'
+$env:ADMIN_SEED_PASSWORD='defina-a-senha-fora-do-repositorio'
+npm run db:seed-admin
+```
 
 ## Frontend
 

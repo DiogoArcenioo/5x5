@@ -10,7 +10,8 @@
     "start:prod": "node dist/main.js",
     "typecheck": "tsc --noEmit",
     "db:migrate": "node database/migrate.js",
-    "db:verify": "node database/verify.js"
+    "db:verify": "node database/verify.js",
+    "db:seed-admin": "node database/seed-admin.js"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.9",

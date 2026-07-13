@@ -1,9 +1,12 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { AdminGuard } from '../auth/auth.guards';
 import { CreatePlayerDto, PeopleListDto, UpdatePlayerDto } from './dto/people.dto';
 import { PeopleService } from './people.service';
 
 @ApiTags('players')
+@ApiBearerAuth()
+@UseGuards(AdminGuard)
 @Controller('admin/players')
 export class PlayersController {
   constructor(private readonly service: PeopleService) {}

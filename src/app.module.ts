@@ -6,6 +6,7 @@ import { AdminDataModule } from './admin-data/admin-data.module';
 import { PeopleModule } from './people/people.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { ALL_ENTITIES } from './database/entities';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { ALL_ENTITIES } from './database/entities';
         },
       }),
     }),
+    AuthModule,
     HealthModule,
     PeopleModule,
     CatalogModule,

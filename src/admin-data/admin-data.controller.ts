@@ -1,9 +1,12 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
-import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { AdminGuard } from '../auth/auth.guards';
 import { AdminDataService } from './admin-data.service';
 import { CreateRecordDto, ListRecordsDto, RecordKeyDto, UpdateRecordDto } from './dto/admin-data.dto';
 
 @ApiTags('admin-data')
+@ApiBearerAuth()
+@UseGuards(AdminGuard)
 @Controller('admin/data')
 export class AdminDataController {
   constructor(private readonly service: AdminDataService) {}

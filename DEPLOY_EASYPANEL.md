@@ -26,8 +26,6 @@ DB_USER=usuario-do-postgres
 DB_PASSWORD=senha-do-postgres
 DB_SSL=false
 DB_LOGGING=false
-ADMIN_USERNAME=seu-usuario-admin
-ADMIN_PASSWORD=uma-senha-longa-e-exclusiva
 API_CORS_ORIGIN=https://dominio-do-frontend
 ```
 
@@ -48,14 +46,12 @@ No serviço do frontend, configure:
 
 ```dotenv
 BACKEND_URL=http://nome-interno-do-servico-backend:3000
-ADMIN_USERNAME=mesmo-usuario-do-backend
-ADMIN_PASSWORD=mesma-senha-administrativa-do-backend
 ```
 
 ## Segurança
 
 - não publique arquivos `.env`;
-- use uma senha administrativa diferente da senha do banco;
+- nunca armazene senhas de usuários em variáveis do frontend;
 - não exponha a porta do PostgreSQL sem necessidade;
 - prefira a rede interna entre PostgreSQL, Nest e Next;
 - troque qualquer credencial que já tenha aparecido em capturas de tela.

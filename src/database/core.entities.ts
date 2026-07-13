@@ -141,6 +141,36 @@ export const HintTypeEntity = new EntitySchema({
   },
 });
 
+export const AppUserEntity = new EntitySchema({
+  name: 'AppUser', tableName: 'app_users',
+  columns: {
+    id: uuidId,
+    username: { type: 'varchar', length: 50 },
+    usernameNormalized: { name: 'username_normalized', type: 'varchar', length: 50, unique: true },
+    email: { type: 'varchar', length: 254, nullable: true },
+    emailNormalized: { name: 'email_normalized', type: 'varchar', length: 254, nullable: true, unique: true },
+    passwordHash: { name: 'password_hash', type: 'text' },
+    role: { type: 'varchar', length: 20, default: 'user' },
+    status: { type: 'varchar', length: 20, default: 'active' },
+    lastLoginAt: { name: 'last_login_at', type: 'timestamptz', nullable: true },
+    createdAt,
+    updatedAt,
+  },
+});
+
+export const UserSessionEntity = new EntitySchema({
+  name: 'UserSession', tableName: 'user_sessions',
+  columns: {
+    id: uuidId,
+    userId: { name: 'user_id', type: 'uuid' },
+    tokenHash: { name: 'token_hash', type: 'char', length: 64, unique: true },
+    expiresAt: { name: 'expires_at', type: 'timestamptz' },
+    lastUsedAt: { name: 'last_used_at', type: 'timestamptz' },
+    revokedAt: { name: 'revoked_at', type: 'timestamptz', nullable: true },
+    createdAt,
+  },
+});
+
 export const CORE_ENTITIES = [
   RegionEntity,
   CountryEntity,
@@ -154,4 +184,6 @@ export const CORE_ENTITIES = [
   MapEntity,
   DataProviderEntity,
   HintTypeEntity,
+  AppUserEntity,
+  UserSessionEntity,
 ];
