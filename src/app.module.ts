@@ -27,7 +27,10 @@ import { ALL_ENTITIES } from './database/entities';
         logging: config.get<string>('DB_LOGGING') === 'true',
         extra: {
           max: 10,
+          min: 0,
+          idleTimeoutMillis: 30_000,
           connectionTimeoutMillis: 10_000,
+          keepAlive: true,
           application_name: 'counter-5x5-nest-api',
         },
       }),

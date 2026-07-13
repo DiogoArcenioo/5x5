@@ -2,6 +2,8 @@
 
 API NestJS + TypeORM para cadastrar e manter os dados competitivos usados pelos minigames.
 
+Para publicar no Easypanel, consulte [DEPLOY_EASYPANEL.md](DEPLOY_EASYPANEL.md).
+
 ## Executar
 
 ```powershell
