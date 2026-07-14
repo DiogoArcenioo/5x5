@@ -18,7 +18,7 @@ export class AdminDataController {
   }
 
   @Get(':resource')
-  @ApiParam({ name: 'resource', example: 'seasons' })
+  @ApiParam({ name: 'resource', example: 'player-team-years' })
   @ApiOperation({ summary: 'Lista registros com paginação, busca, ordenação e filtros' })
   list(@Param('resource') resource: string, @Query() query: ListRecordsDto) {
     return this.service.list(resource, query);

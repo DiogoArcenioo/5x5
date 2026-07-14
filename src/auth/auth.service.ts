@@ -4,7 +4,7 @@ import { DataSource, QueryFailedError } from 'typeorm';
 import { LoginDto, RegisterDto } from './dto/auth.dto';
 
 export type AuthenticatedUser = {
-  id: string;
+  id: number;
   username: string;
   email: string | null;
   role: 'user' | 'admin';

@@ -1,8 +1,26 @@
 # 5x5 API
 
-Backend do 5x5.gg construído com NestJS, TypeORM e PostgreSQL. Este repositório executa somente a API; ele não contém nem serve HTML, CSS ou JavaScript do frontend.
+Backend NestJS e PostgreSQL do 5x5.gg.
 
-O frontend Next.js está no repositório separado [DiogoArcenioo/5x5-front](https://github.com/DiogoArcenioo/5x5-front).
+## Modelo de dados
+
+O domínio foi reduzido a cinco áreas:
+
+- regiões;
+- países;
+- times;
+- jogadores e suas skills;
+- vínculo do jogador com um time em um ano entre 2017 e 2026.
+
+A lineup de um time em determinado ano é formada diretamente pelos registros de
+`player_team_years`. Não existem tabelas separadas de temporada, versão ou lineup.
+
+As skills do jogador são `firepower`, `entrying`, `trading`, `opening`,
+`clutching`, `sniping` e `utility`, todas de 0 a 100. O `overall` é calculado
+automaticamente pela média arredondada das sete skills.
+
+Os campos textuais do domínio são normalizados e armazenados em uppercase. A
+regra não é aplicada a usuário, senha, hashes, tokens, datas ou enums técnicos.
 
 ## Executar localmente
 
@@ -11,13 +29,9 @@ npm install
 npm run start:dev
 ```
 
-Endereços do backend:
-
 - API: `http://localhost:3000/api`;
-- saúde e banco: `http://localhost:3000/api/health`;
+- saúde: `http://localhost:3000/api/health`;
 - Swagger: `http://localhost:3000/docs`.
-
-A raiz `http://localhost:3000/` retorna `404` intencionalmente, pois o Nest não serve interface web.
 
 ## Banco
 
@@ -26,51 +40,39 @@ npm run db:migrate
 npm run db:verify
 ```
 
-O TypeORM usa `synchronize: false`. Mudanças estruturais devem ser feitas por novas migrações SQL em `database/migrations`.
-
-## API pública
-
-- `GET /api/catalog/summary`
-- `GET /api/catalog/players`
-- `GET /api/catalog/players/:slug`
-- `GET /api/catalog/teams`
-- `GET /api/catalog/teams/:slug`
-- `GET /api/catalog/seasons`
-- `GET /api/catalog/tournaments`
-
-## API administrativa
-
-- `GET/POST /api/admin/players`
-- `GET/PATCH/DELETE /api/admin/players/:id`
-- `GET/POST /api/admin/coaches`
-- `GET/PATCH/DELETE /api/admin/coaches/:id`
-- `GET /api/admin/data/resources`
-- `GET/POST/PATCH/DELETE /api/admin/data/:resource`
-
-Os endpoints `/api/admin/*` exigem uma sessão Bearer de um usuário com papel `admin`.
-
-## Usuários e autenticação
-
-- `POST /api/auth/register`: cria sempre um usuário comum;
-- `POST /api/auth/login`: autentica e cria uma sessão de sete dias;
-- `GET /api/auth/me`: retorna o usuário da sessão;
-- `POST /api/auth/logout`: revoga a sessão atual.
-
-As senhas são armazenadas com scrypt e salt individual. Os tokens entregues ao cliente não são persistidos diretamente: o banco armazena somente o hash SHA-256 do token.
-
-Para inicializar um administrador em um banco novo:
+Para apagar e reconstruir todas as tabelas:
 
 ```powershell
+$env:DB_RESET_CONFIRM='RESET'
+npm run db:reset
 npm run db:migrate
+Remove-Item Env:DB_RESET_CONFIRM
+```
+
+O reset remove também usuários e sessões. As migrações reinserem as 8 regiões e
+os 51 países representados nos Majors desde 2017.
+
+## Administrador inicial
+
+```powershell
 $env:ADMIN_SEED_USERNAME='admin'
-$env:ADMIN_SEED_PASSWORD='defina-a-senha-fora-do-repositorio'
+$env:ADMIN_SEED_PASSWORD='defina-uma-senha-segura'
 npm run db:seed-admin
 ```
 
-## Frontend
+## API pública
 
-O frontend chama URLs relativas `/api/*` e faz o encaminhamento para este serviço por meio da variável `BACKEND_URL`. Para desenvolvimento local, rode esta API na porta `3000` e o frontend na porta `3001`.
+- `GET /api/catalog/summary`;
+- `GET /api/catalog/players`;
+- `GET /api/catalog/players/:slug`;
+- `GET /api/catalog/teams`;
+- `GET /api/catalog/teams/:slug`.
 
-## Deploy
+## API administrativa
 
-Consulte [DEPLOY_EASYPANEL.md](DEPLOY_EASYPANEL.md).
+- `GET/POST/PATCH/DELETE /api/admin/data/regions`;
+- `GET/POST/PATCH/DELETE /api/admin/data/countries`;
+- `GET/POST/PATCH/DELETE /api/admin/data/teams`;
+- `GET/POST/PATCH/DELETE /api/admin/data/player-team-years`;
+- `GET/POST /api/admin/players`;
+- `GET/PATCH/DELETE /api/admin/players/:id`.

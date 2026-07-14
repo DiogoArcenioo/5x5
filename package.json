@@ -9,6 +9,7 @@
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main.js",
     "typecheck": "tsc --noEmit",
+    "db:reset": "node database/reset.js",
     "db:migrate": "node database/migrate.js",
     "db:verify": "node database/verify.js",
     "db:seed-admin": "node database/seed-admin.js"

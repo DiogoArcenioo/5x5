@@ -1,9 +1,9 @@
 import type { EntitySchemaColumnOptions } from 'typeorm';
 
-export const uuidId: EntitySchemaColumnOptions = {
-  type: 'uuid',
+export const identityInteger: EntitySchemaColumnOptions = {
+  type: 'integer',
   primary: true,
-  generated: 'uuid',
+  generated: 'increment',
 };
 
 export const identitySmallint: EntitySchemaColumnOptions = {

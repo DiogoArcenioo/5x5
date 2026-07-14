@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AdminGuard } from '../auth/auth.guards';
 import { CreatePlayerDto, PeopleListDto, UpdatePlayerDto } from './dto/people.dto';
@@ -15,15 +15,15 @@ export class PlayersController {
   list(@Query() query: PeopleListDto) { return this.service.listPlayers(query); }
 
   @Get(':id')
-  get(@Param('id', ParseUUIDPipe) id: string) { return this.service.getPlayer(id); }
+  get(@Param('id', ParseIntPipe) id: number) { return this.service.getPlayer(id); }
 
   @Post()
-  @ApiOperation({ summary: 'Cria pessoa, jogador e aliases em uma única transação' })
+  @ApiOperation({ summary: 'Cadastra jogador e suas sete skills; o overall é calculado automaticamente' })
   create(@Body() dto: CreatePlayerDto) { return this.service.createPlayer(dto); }
 
   @Patch(':id')
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdatePlayerDto) { return this.service.updatePlayer(id, dto); }
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdatePlayerDto) { return this.service.updatePlayer(id, dto); }
 
   @Delete(':id')
-  remove(@Param('id', ParseUUIDPipe) id: string) { return this.service.removePlayer(id); }
+  remove(@Param('id', ParseIntPipe) id: number) { return this.service.removePlayer(id); }
 }

@@ -1,5 +1,5 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiTags } from '@nestjs/swagger';
 import { CatalogService } from './catalog.service';
 import { CatalogQueryDto } from './dto/catalog-query.dto';
 
@@ -21,12 +21,5 @@ export class CatalogController {
   players(@Query() query: CatalogQueryDto) { return this.service.players(query); }
 
   @Get('players/:slug')
-  @ApiOperation({ summary: 'Perfil público completo do jogador, sem campos de imagem' })
   player(@Param('slug') slug: string) { return this.service.player(slug); }
-
-  @Get('seasons')
-  seasons() { return this.service.seasons(); }
-
-  @Get('tournaments')
-  tournaments() { return this.service.tournaments(); }
 }

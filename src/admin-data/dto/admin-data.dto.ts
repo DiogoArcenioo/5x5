@@ -34,7 +34,7 @@ export class ListRecordsDto {
   @IsIn(['ASC', 'DESC'])
   order: 'ASC' | 'DESC' = 'ASC';
 
-  @ApiPropertyOptional({ description: 'Objeto JSON de filtros exatos. Ex.: {"seasonId":"uuid"}' })
+  @ApiPropertyOptional({ description: 'Objeto JSON de filtros exatos. Ex.: {"seasonId":1}' })
   @IsOptional()
   @IsString()
   filters?: string;

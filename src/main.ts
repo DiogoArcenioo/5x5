@@ -35,7 +35,7 @@ async function bootstrap(): Promise<void> {
     .addTag('auth')
     .addTag('health')
     .addTag('players')
-    .addTag('coaches')
+    .addTag('player-team-years')
     .addTag('catalog')
     .addTag('admin-data')
     .build();

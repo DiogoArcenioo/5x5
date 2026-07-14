@@ -178,6 +178,11 @@ export class AdminDataService {
       if (missing.length) throw new BadRequestException({ message: 'Campos obrigatórios ausentes.', fields: missing });
     }
 
-    return { ...payload };
+    return Object.fromEntries(
+      Object.entries(payload).map(([field, value]) => [
+        field,
+        typeof value === 'string' ? value.trim().toUpperCase() : value,
+      ]),
+    );
   }
 }
