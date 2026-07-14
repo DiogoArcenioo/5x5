@@ -62,8 +62,12 @@ export class CatalogService {
       SELECT pty.year,
              jsonb_agg(jsonb_build_object(
                'id', p.id, 'nickname', p.nickname, 'displayName', p.display_name,
-               'slug', p.slug, 'overall', p.overall, 'countryCode', c.code
-             ) ORDER BY p.overall DESC, p.nickname) AS players
+               'slug', p.slug, 'countryCode', c.code,
+               'overall', pty.overall, 'firepower', pty.firepower,
+               'entrying', pty.entrying, 'trading', pty.trading,
+               'opening', pty.opening, 'clutching', pty.clutching,
+               'sniping', pty.sniping, 'utility', pty.utility
+             ) ORDER BY pty.overall DESC, p.nickname) AS players
       FROM player_team_years pty
       JOIN players p ON p.id=pty.player_id
       LEFT JOIN countries c ON c.id=p.country_id
@@ -83,6 +87,15 @@ export class CatalogService {
     }
     if (query.status) conditions.push(`p.career_status = ${add(query.status)}`);
     if (query.countryCode) conditions.push(`c.code = ${add(query.countryCode.toUpperCase())}`);
+    let statsYear = '';
+    if (query.year) {
+      const year = add(query.year);
+      statsYear = `AND pty.year = ${year}`;
+      conditions.push(`EXISTS (
+        SELECT 1 FROM player_team_years yearly
+        WHERE yearly.player_id = p.id AND yearly.year = ${year}
+      )`);
+    }
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const countValues = [...values];
     const limit = add(query.pageSize);
@@ -91,9 +104,19 @@ export class CatalogService {
       SELECT p.id, p.nickname, p.display_name AS "displayName", p.slug,
              p.country_id AS "countryId", c.code AS "countryCode", c.name AS "countryName", r.name AS "regionName",
              p.birth_date AS "birthDate", p.career_status AS "careerStatus",
-             p.overall, p.firepower, p.entrying, p.trading, p.opening, p.clutching, p.sniping, p.utility
+             latest.year AS "statsYear", latest.overall, latest.firepower,
+             latest.entrying, latest.trading, latest.opening, latest.clutching,
+             latest.sniping, latest.utility
       FROM players p LEFT JOIN countries c ON c.id=p.country_id LEFT JOIN regions r ON r.id=c.region_id
-      ${where} ORDER BY p.overall DESC, p.nickname LIMIT ${limit} OFFSET ${offset}
+      LEFT JOIN LATERAL (
+        SELECT pty.year, pty.overall, pty.firepower, pty.entrying, pty.trading,
+               pty.opening, pty.clutching, pty.sniping, pty.utility
+        FROM player_team_years pty
+        WHERE pty.player_id = p.id ${statsYear}
+        ORDER BY pty.year DESC
+        LIMIT 1
+      ) latest ON true
+      ${where} ORDER BY latest.overall DESC NULLS LAST, p.nickname LIMIT ${limit} OFFSET ${offset}
     `, values) as Array<Record<string, unknown>>;
     const [count] = await this.dataSource.query(`
       SELECT count(*)::integer AS total FROM players p LEFT JOIN countries c ON c.id=p.country_id ${where}
@@ -106,13 +129,25 @@ export class CatalogService {
       SELECT p.id, p.nickname, p.display_name AS "displayName", p.slug,
              p.country_id AS "countryId", c.code AS "countryCode", c.name AS "countryName", r.name AS "regionName",
              p.birth_date AS "birthDate", p.career_status AS "careerStatus",
-             p.overall, p.firepower, p.entrying, p.trading, p.opening, p.clutching, p.sniping, p.utility
+             latest.year AS "statsYear", latest.overall, latest.firepower,
+             latest.entrying, latest.trading, latest.opening, latest.clutching,
+             latest.sniping, latest.utility
       FROM players p LEFT JOIN countries c ON c.id=p.country_id LEFT JOIN regions r ON r.id=c.region_id
+      LEFT JOIN LATERAL (
+        SELECT pty.year, pty.overall, pty.firepower, pty.entrying, pty.trading,
+               pty.opening, pty.clutching, pty.sniping, pty.utility
+        FROM player_team_years pty
+        WHERE pty.player_id = p.id
+        ORDER BY pty.year DESC
+        LIMIT 1
+      ) latest ON true
       WHERE upper(p.slug)=upper($1)
     `, [slug]) as Array<Record<string, unknown>>;
     if (!player) throw new NotFoundException('Jogador não encontrado.');
     const teams = await this.dataSource.query(`
-      SELECT pty.id, pty.year, t.id AS "teamId", t.name AS "teamName", t.slug AS "teamSlug"
+      SELECT pty.id, pty.year, t.id AS "teamId", t.name AS "teamName", t.slug AS "teamSlug",
+             pty.overall, pty.firepower, pty.entrying, pty.trading, pty.opening,
+             pty.clutching, pty.sniping, pty.utility
       FROM player_team_years pty JOIN teams t ON t.id=pty.team_id
       WHERE pty.player_id=$1 ORDER BY pty.year DESC, t.name
     `, [player.id]);

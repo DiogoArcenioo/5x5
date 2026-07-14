@@ -51,33 +51,6 @@ export class CreatePlayerDto {
   @IsIn(CAREER_STATUSES)
   careerStatus!: string;
 
-  @ApiProperty({ minimum: 0, maximum: 100 })
-  @Type(() => Number) @IsInt() @Min(0) @Max(100)
-  firepower!: number;
-
-  @ApiProperty({ minimum: 0, maximum: 100 })
-  @Type(() => Number) @IsInt() @Min(0) @Max(100)
-  entrying!: number;
-
-  @ApiProperty({ minimum: 0, maximum: 100 })
-  @Type(() => Number) @IsInt() @Min(0) @Max(100)
-  trading!: number;
-
-  @ApiProperty({ minimum: 0, maximum: 100 })
-  @Type(() => Number) @IsInt() @Min(0) @Max(100)
-  opening!: number;
-
-  @ApiProperty({ minimum: 0, maximum: 100 })
-  @Type(() => Number) @IsInt() @Min(0) @Max(100)
-  clutching!: number;
-
-  @ApiProperty({ minimum: 0, maximum: 100 })
-  @Type(() => Number) @IsInt() @Min(0) @Max(100)
-  sniping!: number;
-
-  @ApiProperty({ minimum: 0, maximum: 100 })
-  @Type(() => Number) @IsInt() @Min(0) @Max(100)
-  utility!: number;
 }
 
 export class UpdatePlayerDto extends PartialType(CreatePlayerDto) {}

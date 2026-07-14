@@ -27,4 +27,11 @@ export class CatalogQueryDto {
   @IsString()
   @Length(2, 2)
   countryCode?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(2017)
+  @Max(2026)
+  year?: number;
 }

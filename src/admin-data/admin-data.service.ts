@@ -7,6 +7,11 @@ import { DataSource, EntityMetadata, ObjectLiteral, Repository } from 'typeorm';
 import { ListRecordsDto } from './dto/admin-data.dto';
 import { RESOURCE_REGISTRY, ResourceDefinition } from './resource-registry';
 
+const ANNUAL_SKILLS = [
+  'firepower', 'entrying', 'trading', 'opening',
+  'clutching', 'sniping', 'utility',
+] as const;
+
 @Injectable()
 export class AdminDataService {
   constructor(private readonly dataSource: DataSource) {}
@@ -84,7 +89,7 @@ export class AdminDataService {
   async create(resource: string, payload: Record<string, unknown>): Promise<ObjectLiteral> {
     const definition = this.definition(resource);
     const repository = this.repository(definition);
-    const clean = this.sanitize(repository.metadata, payload, true);
+    const clean = this.sanitize(repository.metadata, this.prepare(resource, payload), true);
     return repository.save(repository.create(clean));
   }
 
@@ -99,7 +104,10 @@ export class AdminDataService {
     const current = await repository.findOne({ where });
     if (!current) throw new NotFoundException('Registro não encontrado.');
 
-    const clean = this.sanitize(repository.metadata, payload, false);
+    const prepared = resource === 'player-team-years'
+      ? this.prepare(resource, { ...current, ...payload })
+      : payload;
+    const clean = this.sanitize(repository.metadata, prepared, false);
     for (const primary of repository.metadata.primaryColumns) delete clean[primary.propertyName];
     const merged = repository.merge(current, clean);
     return repository.save(merged);
@@ -119,6 +127,18 @@ export class AdminDataService {
     const definition = RESOURCE_REGISTRY[resource];
     if (!definition) throw new NotFoundException(`Recurso administrativo desconhecido: ${resource}`);
     return definition;
+  }
+
+  private prepare(resource: string, payload: Record<string, unknown>): Record<string, unknown> {
+    if (resource !== 'player-team-years') return payload;
+    const values = ANNUAL_SKILLS.map((skill) => Number(payload[skill]));
+    if (values.some((value) => !Number.isInteger(value) || value < 0 || value > 100)) {
+      throw new BadRequestException('As sete skills anuais devem ser inteiros entre 0 e 100.');
+    }
+    return {
+      ...payload,
+      overall: Math.round(values.reduce((total, value) => total + value, 0) / values.length),
+    };
   }
 
   private repository(definition: ResourceDefinition): Repository<ObjectLiteral> {

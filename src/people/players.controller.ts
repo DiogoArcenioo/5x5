@@ -18,7 +18,7 @@ export class PlayersController {
   get(@Param('id', ParseIntPipe) id: number) { return this.service.getPlayer(id); }
 
   @Post()
-  @ApiOperation({ summary: 'Cadastra jogador e suas sete skills; o overall é calculado automaticamente' })
+  @ApiOperation({ summary: 'Cadastra a identidade do jogador; skills pertencem ao vínculo anual' })
   create(@Body() dto: CreatePlayerDto) { return this.service.createPlayer(dto); }
 
   @Patch(':id')
