@@ -38,6 +38,7 @@ async function bootstrap(): Promise<void> {
     .addTag('player-team-years')
     .addTag('catalog')
     .addTag('admin-data')
+    .addTag('ranked')
     .build();
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('docs', app, document);

@@ -7,6 +7,7 @@ import { PeopleModule } from './people/people.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { ALL_ENTITIES } from './database/entities';
 import { AuthModule } from './auth/auth.module';
+import { RankedModule } from './ranked/ranked.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { AuthModule } from './auth/auth.module';
       }),
     }),
     AuthModule,
+    RankedModule,
     HealthModule,
     PeopleModule,
     CatalogModule,

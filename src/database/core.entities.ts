@@ -75,7 +75,7 @@ export const AppUserEntity = new EntitySchema({
     usernameNormalized: { name: 'username_normalized', type: 'varchar', length: 50, unique: true },
     email: { type: 'varchar', length: 254, nullable: true },
     emailNormalized: { name: 'email_normalized', type: 'varchar', length: 254, nullable: true, unique: true },
-    passwordHash: { name: 'password_hash', type: 'text' },
+    passwordHash: { name: 'password_hash', type: 'text', nullable: true },
     role: { type: 'varchar', length: 20, default: 'user' },
     status: { type: 'varchar', length: 20, default: 'active' },
     lastLoginAt: { name: 'last_login_at', type: 'timestamptz', nullable: true },
@@ -97,6 +97,36 @@ export const UserSessionEntity = new EntitySchema({
   },
 });
 
+export const RankedRunEntity = new EntitySchema({
+  name: 'RankedRun', tableName: 'ranked_runs',
+  columns: {
+    id: identityInteger,
+    userId: { name: 'user_id', type: 'integer' },
+    playedOn: { name: 'played_on', type: 'date' },
+    status: { type: 'varchar', length: 20, default: 'in_progress' },
+    score: { type: 'integer', default: 0 },
+    swissWins: { name: 'swiss_wins', type: 'smallint', default: 0 },
+    quarterfinalWon: { name: 'quarterfinal_won', type: 'boolean', default: false },
+    semifinalWon: { name: 'semifinal_won', type: 'boolean', default: false },
+    finalWon: { name: 'final_won', type: 'boolean', default: false },
+    createdAt,
+    updatedAt,
+    completedAt: { name: 'completed_at', type: 'timestamptz', nullable: true },
+  },
+});
+
+export const RankedRunEventEntity = new EntitySchema({
+  name: 'RankedRunEvent', tableName: 'ranked_run_events',
+  columns: {
+    id: identityInteger,
+    runId: { name: 'run_id', type: 'integer' },
+    eventKey: { name: 'event_key', type: 'varchar', length: 80 },
+    eventType: { name: 'event_type', type: 'varchar', length: 30 },
+    points: { type: 'smallint' },
+    createdAt,
+  },
+});
+
 export const CORE_ENTITIES = [
   RegionEntity,
   CountryEntity,
@@ -105,4 +135,6 @@ export const CORE_ENTITIES = [
   PlayerTeamYearEntity,
   AppUserEntity,
   UserSessionEntity,
+  RankedRunEntity,
+  RankedRunEventEntity,
 ];
