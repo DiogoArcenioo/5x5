@@ -42,10 +42,11 @@ export class RankedService {
 
   async today(userId: number) {
     const [run] = await this.dataSource.query<RankedRunRow[]>(`${this.runSelect()}
-      WHERE r.user_id = $1 AND r.played_on = (now() AT TIME ZONE $2)::date`, [userId, RANKING_TIME_ZONE]);
+      WHERE r.user_id = $1
+        AND r.played_on = ((now() AT TIME ZONE $2) - interval '1 minute')::date`, [userId, RANKING_TIME_ZONE]);
     const [clock] = await this.dataSource.query<Array<{ today: string; nextAvailableAt: Date }>>(`
-      SELECT (now() AT TIME ZONE $1)::date::text AS today,
-             ((date_trunc('day', now() AT TIME ZONE $1) + interval '1 day') AT TIME ZONE $1) AS "nextAvailableAt"
+      SELECT ((now() AT TIME ZONE $1) - interval '1 minute')::date::text AS today,
+             (((((now() AT TIME ZONE $1) - interval '1 minute')::date + interval '1 day 1 minute')) AT TIME ZONE $1) AS "nextAvailableAt"
     `, [RANKING_TIME_ZONE]);
     return { played: Boolean(run), run: run || null, ...clock };
   }
@@ -53,7 +54,7 @@ export class RankedService {
   async start(userId: number) {
     const rows = await this.dataSource.query<RankedRunRow[]>(`
       INSERT INTO ranked_runs (user_id, played_on)
-      VALUES ($1, (now() AT TIME ZONE $2)::date)
+      VALUES ($1, ((now() AT TIME ZONE $2) - interval '1 minute')::date)
       ON CONFLICT (user_id, played_on) DO NOTHING
       RETURNING id, user_id AS "userId", played_on::text AS "playedOn", status, score,
                 swiss_wins AS "swissWins", quarterfinal_won AS "quarterfinalWon",
@@ -111,7 +112,7 @@ export class RankedService {
     if (!run) throw new NotFoundException('Partida ranqueada não encontrada.');
     if (run.userId !== userId) throw new ForbiddenException('Esta partida ranqueada pertence a outro usuário.');
     const [date] = await manager.query<Array<{ today: boolean }>>(
-      'SELECT $1::date = (now() AT TIME ZONE $2)::date AS today', [run.playedOn, RANKING_TIME_ZONE],
+      `SELECT $1::date = ((now() AT TIME ZONE $2) - interval '1 minute')::date AS today`, [run.playedOn, RANKING_TIME_ZONE],
     );
     if (!date.today) throw new ConflictException('Esta partida ranqueada não pertence ao dia de hoje.');
     return run;

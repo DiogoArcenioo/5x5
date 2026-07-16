@@ -8,6 +8,8 @@ import { CatalogModule } from './catalog/catalog.module';
 import { ALL_ENTITIES } from './database/entities';
 import { AuthModule } from './auth/auth.module';
 import { RankedModule } from './ranked/ranked.module';
+import { AdminUsersModule } from './admin-users/admin-users.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -39,6 +41,8 @@ import { RankedModule } from './ranked/ranked.module';
     }),
     AuthModule,
     RankedModule,
+    AdminUsersModule,
+    NotificationsModule,
     HealthModule,
     PeopleModule,
     CatalogModule,

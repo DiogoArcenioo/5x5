@@ -39,6 +39,9 @@ async function bootstrap(): Promise<void> {
     .addTag('catalog')
     .addTag('admin-data')
     .addTag('ranked')
+    .addTag('admin-users')
+    .addTag('notifications')
+    .addTag('admin-notifications')
     .build();
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('docs', app, document);

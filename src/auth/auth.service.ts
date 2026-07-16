@@ -198,7 +198,7 @@ export class AuthService {
     return createHash('sha256').update(token).digest('hex');
   }
 
-  private async hashPassword(password: string): Promise<string> {
+  async hashPassword(password: string): Promise<string> {
     const salt = randomBytes(16);
     const derivedKey = await this.scrypt(password, salt);
     return `scrypt$${salt.toString('base64url')}$${derivedKey.toString('base64url')}`;
