@@ -25,16 +25,22 @@ export class RankedService {
   async leaderboard(limit = 100) {
     const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 100);
     const entries = await this.dataSource.query(`
-      SELECT row_number() OVER (ORDER BY sum(r.score) DESC, max(r.updated_at) ASC, u.id ASC)::integer AS rank,
-             u.id AS "userId", u.username,
-             sum(r.score)::integer AS points,
-             count(r.id)::integer AS attempts,
-             max(r.played_on)::text AS "lastPlayedOn"
-      FROM ranked_runs r
-      JOIN app_users u ON u.id = r.user_id
-      WHERE u.status = 'active'
-      GROUP BY u.id, u.username
-      ORDER BY points DESC, max(r.updated_at) ASC, u.id ASC
+      WITH totals AS (
+        SELECT u.id AS "userId", u.username,
+               GREATEST(0, COALESCE(sum(r.score), 0)::integer + u.ranked_points_adjustment)::integer AS points,
+               GREATEST(0, count(r.id)::integer + u.ranked_matches_adjustment)::integer AS attempts,
+               max(r.played_on)::text AS "lastPlayedOn",
+               max(r.updated_at) AS "lastUpdatedAt"
+        FROM app_users u
+        LEFT JOIN ranked_runs r ON r.user_id = u.id
+        WHERE u.status = 'active'
+        GROUP BY u.id, u.username, u.ranked_points_adjustment, u.ranked_matches_adjustment
+      )
+      SELECT row_number() OVER (ORDER BY points DESC, "lastUpdatedAt" ASC NULLS LAST, "userId" ASC)::integer AS rank,
+             "userId", username, points, attempts, "lastPlayedOn"
+      FROM totals
+      WHERE points > 0 OR attempts > 0
+      ORDER BY points DESC, "lastUpdatedAt" ASC NULLS LAST, "userId" ASC
       LIMIT $1
     `, [safeLimit]) as Array<Record<string, unknown>>;
     return { entries, scoring: { swissWin: 10, quarterfinalWin: 30, semifinalWin: 30, finalWin: 50, maximum: 140 } };
@@ -43,26 +49,73 @@ export class RankedService {
   async today(userId: number) {
     const [run] = await this.dataSource.query<RankedRunRow[]>(`${this.runSelect()}
       WHERE r.user_id = $1
-        AND r.played_on = ((now() AT TIME ZONE $2) - interval '1 minute')::date`, [userId, RANKING_TIME_ZONE]);
+        AND r.played_on = ((now() AT TIME ZONE $2) - interval '1 minute')::date
+      ORDER BY r.created_at DESC LIMIT 1`, [userId, RANKING_TIME_ZONE]);
+    const [access] = await this.dataSource.query<Array<{ unlimited: boolean; attemptsToday: number; extraAttemptsToday: number }>>(`
+      SELECT u.ranked_unlimited AS unlimited,
+             (SELECT count(r.id)::integer FROM ranked_runs r WHERE r.user_id = u.id
+               AND r.played_on = ((now() AT TIME ZONE $2) - interval '1 minute')::date) AS "attemptsToday",
+             CASE WHEN u.ranked_extra_attempts_on = ((now() AT TIME ZONE $2) - interval '1 minute')::date
+               THEN u.ranked_extra_attempts ELSE 0 END AS "extraAttemptsToday"
+      FROM app_users u WHERE u.id = $1
+    `, [userId, RANKING_TIME_ZONE]);
     const [clock] = await this.dataSource.query<Array<{ today: string; nextAvailableAt: Date }>>(`
       SELECT ((now() AT TIME ZONE $1) - interval '1 minute')::date::text AS today,
              (((((now() AT TIME ZONE $1) - interval '1 minute')::date + interval '1 day 1 minute')) AT TIME ZONE $1) AS "nextAvailableAt"
     `, [RANKING_TIME_ZONE]);
-    return { played: Boolean(run), run: run || null, ...clock };
+    const [ranking] = await this.dataSource.query<Array<{ rank: number; total: number; points: number; attempts: number }>>(`
+      WITH totals AS (
+        SELECT u.id AS "userId",
+               GREATEST(0, COALESCE(sum(r.score), 0)::integer + u.ranked_points_adjustment)::integer AS points,
+               GREATEST(0, count(r.id)::integer + u.ranked_matches_adjustment)::integer AS attempts,
+               max(r.updated_at) AS "lastUpdatedAt"
+        FROM app_users u
+        LEFT JOIN ranked_runs r ON r.user_id = u.id
+        WHERE u.status = 'active'
+        GROUP BY u.id, u.ranked_points_adjustment, u.ranked_matches_adjustment
+      ), ranked AS (
+        SELECT "userId", points, attempts,
+               row_number() OVER (ORDER BY points DESC, "lastUpdatedAt" ASC NULLS LAST, "userId" ASC)::integer AS rank,
+               count(*) OVER ()::integer AS total
+        FROM totals
+        WHERE points > 0 OR attempts > 0
+      )
+      SELECT rank, total, points, attempts FROM ranked WHERE "userId" = $1
+    `, [userId]);
+    const dailyLimit = 1 + (access?.extraAttemptsToday || 0);
+    const canPlay = Boolean(access?.unlimited) || (access?.attemptsToday || 0) < dailyLimit;
+    return { played: Boolean(run), canPlay, unlimited: Boolean(access?.unlimited), attemptsToday: access?.attemptsToday || 0, dailyLimit, ranking: ranking || null, run: run || null, ...clock };
   }
 
   async start(userId: number) {
-    const rows = await this.dataSource.query<RankedRunRow[]>(`
-      INSERT INTO ranked_runs (user_id, played_on)
-      VALUES ($1, ((now() AT TIME ZONE $2) - interval '1 minute')::date)
-      ON CONFLICT (user_id, played_on) DO NOTHING
-      RETURNING id, user_id AS "userId", played_on::text AS "playedOn", status, score,
-                swiss_wins AS "swissWins", quarterfinal_won AS "quarterfinalWon",
-                semifinal_won AS "semifinalWon", final_won AS "finalWon",
-                created_at AS "createdAt", completed_at AS "completedAt"
-    `, [userId, RANKING_TIME_ZONE]);
-    if (!rows[0]) throw new ConflictException('Você já usou sua partida ranqueada de hoje. Volte amanhã.');
-    return rows[0];
+    return this.dataSource.transaction(async (manager) => {
+      const [settings] = await manager.query<Array<{ unlimited: boolean; extraAttempts: number; extraAttemptsOn: string | null }>>(`
+        SELECT ranked_unlimited AS unlimited, ranked_extra_attempts AS "extraAttempts",
+               ranked_extra_attempts_on::text AS "extraAttemptsOn"
+        FROM app_users WHERE id = $1 FOR UPDATE
+      `, [userId]);
+      if (!settings) throw new NotFoundException('Usuário não encontrado.');
+      const [daily] = await manager.query<Array<{ playedOn: string; attemptsToday: number }>>(`
+        SELECT ((now() AT TIME ZONE $2) - interval '1 minute')::date::text AS "playedOn",
+               (SELECT count(id)::integer FROM ranked_runs WHERE user_id = $1
+                 AND played_on = ((now() AT TIME ZONE $2) - interval '1 minute')::date) AS "attemptsToday"
+      `, [userId, RANKING_TIME_ZONE]);
+      const extraAttempts = settings.extraAttemptsOn === daily.playedOn ? settings.extraAttempts : 0;
+      const dailyLimit = 1 + extraAttempts;
+      if (!settings.unlimited && daily.attemptsToday >= dailyLimit) {
+        throw new ConflictException('Você já usou sua partida ranqueada de hoje. Volte amanhã.');
+      }
+      const rows = await manager.query<RankedRunRow[]>(`
+        INSERT INTO ranked_runs (user_id, played_on)
+        VALUES ($1, $2::date)
+        RETURNING id, user_id AS "userId", played_on::text AS "playedOn", status, score,
+                  swiss_wins AS "swissWins", quarterfinal_won AS "quarterfinalWon",
+                  semifinal_won AS "semifinalWon", final_won AS "finalWon",
+                  created_at AS "createdAt", completed_at AS "completedAt"
+      `, [userId, daily.playedOn]);
+      const attemptsToday = daily.attemptsToday + 1;
+      return { ...rows[0], canPlay: settings.unlimited || attemptsToday < dailyLimit, unlimited: settings.unlimited, attemptsToday, dailyLimit };
+    });
   }
 
   async addEvent(userId: number, runId: number, dto: RankedEventDto) {

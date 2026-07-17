@@ -39,6 +39,7 @@ async function bootstrap(): Promise<void> {
     .addTag('catalog')
     .addTag('admin-data')
     .addTag('ranked')
+    .addTag('admin-ranking')
     .addTag('admin-users')
     .addTag('notifications')
     .addTag('admin-notifications')

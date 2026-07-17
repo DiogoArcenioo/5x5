@@ -43,4 +43,3 @@ export class RankedController {
     return this.service.complete(request.user.id, id);
   }
 }
-

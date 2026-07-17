@@ -20,8 +20,8 @@ export class AdminUsersService {
     const data = await this.dataSource.query(`
       SELECT u.id, u.username, u.email, u.role, u.status,
              u.last_login_at AS "lastLoginAt", u.created_at AS "createdAt",
-             COALESCE((SELECT sum(r.score)::integer FROM ranked_runs r WHERE r.user_id = u.id), 0) AS points,
-             (SELECT count(r.id)::integer FROM ranked_runs r WHERE r.user_id = u.id) AS "rankedAttempts",
+             GREATEST(0, COALESCE((SELECT sum(r.score)::integer FROM ranked_runs r WHERE r.user_id = u.id), 0) + u.ranked_points_adjustment)::integer AS points,
+             GREATEST(0, (SELECT count(r.id)::integer FROM ranked_runs r WHERE r.user_id = u.id) + u.ranked_matches_adjustment)::integer AS "rankedAttempts",
              COALESCE((SELECT array_agg(i.provider ORDER BY i.provider) FROM user_oauth_identities i WHERE i.user_id = u.id), ARRAY[]::varchar[]) AS providers
       FROM app_users u
       ${where}
@@ -94,4 +94,3 @@ export class AdminUsersService {
     return users[0];
   }
 }
-
