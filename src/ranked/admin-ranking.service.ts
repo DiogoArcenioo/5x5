@@ -1,12 +1,16 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 import { ListAdminRankingDto, UpdateAdminRankingDto } from './dto/admin-ranking.dto';
+import { RankedCycleService } from './ranked-cycle.service';
 
 const RANKING_TIME_ZONE = 'America/Sao_Paulo';
 
 @Injectable()
 export class AdminRankingService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly cycles: RankedCycleService,
+  ) {}
 
   async list(query: ListAdminRankingDto) {
     const values: unknown[] = [];
@@ -26,7 +30,11 @@ export class AdminRankingService {
              (SELECT count(r.id)::integer FROM ranked_runs r WHERE r.user_id = u.id) AS "actualMatches",
              u.ranked_unlimited AS unlimited,
              (SELECT count(r.id)::integer FROM ranked_runs r WHERE r.user_id = u.id
-               AND r.played_on = ((now() AT TIME ZONE '${RANKING_TIME_ZONE}') - interval '1 minute')::date) AS "attemptsToday",
+               AND r.cycle_id = (
+                 SELECT c.id FROM ranked_cycles c
+                 WHERE c.played_on = ((now() AT TIME ZONE '${RANKING_TIME_ZONE}') - interval '1 minute')::date
+                 ORDER BY c.version DESC LIMIT 1
+               )) AS "attemptsToday",
              CASE WHEN u.ranked_extra_attempts_on = ((now() AT TIME ZONE '${RANKING_TIME_ZONE}') - interval '1 minute')::date
                THEN u.ranked_extra_attempts ELSE 0 END AS "extraAttemptsToday"
       FROM app_users u
@@ -80,6 +88,15 @@ export class AdminRankingService {
     return { released: true, ...rows[0] };
   }
 
+  async resetField() {
+    const cycle = await this.cycles.reset();
+    return {
+      reset: true,
+      field: cycle.field,
+      cycle: { id: cycle.id, playedOn: cycle.playedOn, version: cycle.version },
+    };
+  }
+
   private async lockUser(manager: EntityManager, id: number) {
     const rows = await manager.query<Array<{
       id: number;
@@ -101,4 +118,3 @@ export class AdminRankingService {
     return rows[0];
   }
 }
-

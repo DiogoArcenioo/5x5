@@ -6,6 +6,78 @@ import { CatalogQueryDto } from './dto/catalog-query.dto';
 export class CatalogService {
   constructor(private readonly dataSource: DataSource) {}
 
+  async bootstrap(): Promise<Record<string, unknown>> {
+    type TeamRow = Record<string, unknown> & { id: number };
+    type LineupRow = { teamId: number; year: number; players: Array<Record<string, unknown>> };
+
+    const [summary, teams, players, lineupRows] = await Promise.all([
+      this.summary(),
+      this.dataSource.query(`
+        SELECT t.id, t.name, t.short_name AS "shortName", t.slug,
+               t.country_id AS "countryId", c.code AS "countryCode", c.name AS "countryName",
+               r.name AS "regionName",
+               (SELECT count(DISTINCT pty.player_id)::integer FROM player_team_years pty WHERE pty.team_id=t.id) AS "playerCount",
+               (SELECT count(DISTINCT pty.year)::integer FROM player_team_years pty WHERE pty.team_id=t.id) AS "yearCount"
+        FROM teams t
+        LEFT JOIN countries c ON c.id=t.country_id
+        LEFT JOIN regions r ON r.id=c.region_id
+        ORDER BY t.name
+      `) as Promise<TeamRow[]>,
+      this.dataSource.query(`
+        SELECT p.id, p.nickname, p.display_name AS "displayName", p.slug,
+               p.country_id AS "countryId", c.code AS "countryCode", c.name AS "countryName", r.name AS "regionName",
+               p.birth_date AS "birthDate", p.career_status AS "careerStatus",
+               latest.year AS "statsYear", latest.overall, latest.firepower,
+               latest.entrying, latest.trading, latest.opening, latest.clutching,
+               latest.sniping, latest.utility
+        FROM players p
+        LEFT JOIN countries c ON c.id=p.country_id
+        LEFT JOIN regions r ON r.id=c.region_id
+        LEFT JOIN LATERAL (
+          SELECT pty.year, pty.overall, pty.firepower, pty.entrying, pty.trading,
+                 pty.opening, pty.clutching, pty.sniping, pty.utility
+          FROM player_team_years pty
+          WHERE pty.player_id = p.id
+          ORDER BY pty.year DESC
+          LIMIT 1
+        ) latest ON true
+        ORDER BY latest.overall DESC NULLS LAST, p.nickname
+      `) as Promise<Array<Record<string, unknown>>>,
+      this.dataSource.query(`
+        SELECT pty.team_id AS "teamId", pty.year,
+               jsonb_agg(jsonb_build_object(
+                 'id', p.id, 'nickname', p.nickname, 'displayName', p.display_name,
+                 'slug', p.slug, 'countryCode', c.code,
+                 'overall', pty.overall, 'firepower', pty.firepower,
+                 'entrying', pty.entrying, 'trading', pty.trading,
+                 'opening', pty.opening, 'clutching', pty.clutching,
+                 'sniping', pty.sniping, 'utility', pty.utility
+               ) ORDER BY pty.overall DESC, p.nickname) AS players
+        FROM player_team_years pty
+        JOIN players p ON p.id=pty.player_id
+        LEFT JOIN countries c ON c.id=p.country_id
+        GROUP BY pty.team_id, pty.year
+        ORDER BY pty.team_id, pty.year DESC
+      `) as Promise<LineupRow[]>,
+    ]);
+
+    const lineupsByTeam = new Map<number, Array<Omit<LineupRow, 'teamId'>>>();
+    for (const { teamId, year, players: lineupPlayers } of lineupRows) {
+      const lineups = lineupsByTeam.get(teamId) ?? [];
+      lineups.push({ year, players: lineupPlayers });
+      lineupsByTeam.set(teamId, lineups);
+    }
+
+    return {
+      summary,
+      teams: teams.map((team) => ({
+        ...team,
+        lineups: lineupsByTeam.get(team.id) ?? [],
+      })),
+      players,
+    };
+  }
+
   async summary(): Promise<Record<string, unknown>> {
     const [counts] = await this.dataSource.query(`
       SELECT

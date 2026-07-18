@@ -25,5 +25,9 @@ export class AdminRankingController {
   release(@Param('id', ParseIntPipe) id: number) {
     return this.service.release(id);
   }
-}
 
+  @Post('reset-field')
+  resetField() {
+    return this.service.resetField();
+  }
+}

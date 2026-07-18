@@ -11,6 +11,9 @@ export class CatalogController {
   @Get('summary')
   summary() { return this.service.summary(); }
 
+  @Get('bootstrap')
+  bootstrap() { return this.service.bootstrap(); }
+
   @Get('teams')
   teams(@Query() query: CatalogQueryDto) { return this.service.teams(query); }
 

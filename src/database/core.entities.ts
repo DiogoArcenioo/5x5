@@ -107,6 +107,7 @@ export const RankedRunEntity = new EntitySchema({
   columns: {
     id: identityInteger,
     userId: { name: 'user_id', type: 'integer' },
+    cycleId: { name: 'cycle_id', type: 'integer', nullable: true },
     playedOn: { name: 'played_on', type: 'date' },
     status: { type: 'varchar', length: 20, default: 'in_progress' },
     score: { type: 'integer', default: 0 },
@@ -117,6 +118,17 @@ export const RankedRunEntity = new EntitySchema({
     createdAt,
     updatedAt,
     completedAt: { name: 'completed_at', type: 'timestamptz', nullable: true },
+  },
+});
+
+export const RankedCycleEntity = new EntitySchema({
+  name: 'RankedCycle', tableName: 'ranked_cycles',
+  columns: {
+    id: identityInteger,
+    playedOn: { name: 'played_on', type: 'date' },
+    version: { type: 'integer' },
+    field: { type: 'jsonb' },
+    createdAt,
   },
 });
 
@@ -140,6 +152,7 @@ export const CORE_ENTITIES = [
   PlayerTeamYearEntity,
   AppUserEntity,
   UserSessionEntity,
+  RankedCycleEntity,
   RankedRunEntity,
   RankedRunEventEntity,
 ];
