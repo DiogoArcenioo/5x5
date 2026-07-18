@@ -10,9 +10,7 @@ export class HealthController {
   @Get()
   @ApiOperation({ summary: 'Verifica a API e a conexão com PostgreSQL' })
   async check(): Promise<Record<string, unknown>> {
-    const result = await this.dataSource.query(
-      'SELECT current_database() AS database, current_user AS "user", now() AS "databaseTime"',
-    ) as Array<Record<string, unknown>>;
-    return { status: 'ok', database: result[0] };
+    await this.dataSource.query('SELECT 1');
+    return { status: 'ok' };
   }
 }

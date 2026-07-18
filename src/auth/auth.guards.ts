@@ -1,8 +1,18 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import type { Request } from 'express';
-import { AuthenticatedUser, AuthService } from './auth.service';
+import { AUTH_COOKIE_NAME, AuthenticatedUser, AuthService } from './auth.service';
 
 export type AuthenticatedRequest = Request & { user: AuthenticatedUser; authToken: string };
+
+function cookieValue(header: string | undefined, name: string): string | undefined {
+  if (!header) return undefined;
+  for (const part of header.split(';')) {
+    const separator = part.indexOf('=');
+    if (separator < 0 || part.slice(0, separator).trim() !== name) continue;
+    try { return decodeURIComponent(part.slice(separator + 1).trim()); } catch { return undefined; }
+  }
+  return undefined;
+}
 
 @Injectable()
 export class SessionAuthGuard implements CanActivate {
@@ -11,11 +21,9 @@ export class SessionAuthGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const authorization = request.headers.authorization;
-    if (!authorization?.startsWith('Bearer ')) {
-      throw new UnauthorizedException('Token de acesso não informado.');
-    }
-    const token = authorization.slice(7).trim();
-    if (!token) throw new UnauthorizedException('Token de acesso não informado.');
+    const bearer = authorization?.startsWith('Bearer ') ? authorization.slice(7).trim() : undefined;
+    const token = bearer || cookieValue(request.headers.cookie, AUTH_COOKIE_NAME);
+    if (!token) throw new UnauthorizedException('Sessão não informada.');
     request.user = await this.authService.authenticateToken(token);
     request.authToken = token;
     return true;

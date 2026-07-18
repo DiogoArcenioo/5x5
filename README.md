@@ -1,6 +1,6 @@
 # 5x5 API
 
-Backend NestJS e PostgreSQL do 5x5.gg.
+Backend NestJS e PostgreSQL do 5x5.
 
 ## Modelo de dados
 

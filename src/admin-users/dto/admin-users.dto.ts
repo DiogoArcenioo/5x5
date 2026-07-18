@@ -46,7 +46,8 @@ export class UpdateAdminUserDto {
 
 export class ResetAdminUserPasswordDto {
   @IsString()
-  @MinLength(8)
+  @MinLength(12)
   @MaxLength(128)
+  @Matches(/^(?=.*[A-Za-z])(?=.*\d).+$/)
   password!: string;
 }

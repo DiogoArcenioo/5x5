@@ -17,6 +17,14 @@ export class RegisterDto extends LoginDto {
   })
   declare username: string;
 
+  @IsString()
+  @MinLength(12)
+  @MaxLength(128)
+  @Matches(/^(?=.*[A-Za-z])(?=.*\d).+$/, {
+    message: 'password deve conter pelo menos uma letra e um número.',
+  })
+  declare password: string;
+
   @IsOptional()
   @IsEmail()
   @MaxLength(254)

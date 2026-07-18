@@ -1,5 +1,6 @@
 import { ConflictException, Injectable, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
 import { createHash, randomBytes, scrypt as nodeScrypt, timingSafeEqual } from 'node:crypto';
 import { OAuth2Client } from 'google-auth-library';
 import { DataSource, QueryFailedError } from 'typeorm';
@@ -13,11 +14,25 @@ export type AuthenticatedUser = {
   status: 'active' | 'disabled';
 };
 
+export const AUTH_COOKIE_NAME = 'cs5x5_session';
+
+export type AuthSession = {
+  token: string;
+  expiresAt: string;
+  user: AuthenticatedUser;
+};
+
+type SessionClaims = { sub: string; jti: string };
+
 type UserWithPassword = AuthenticatedUser & { passwordHash: string | null };
 
 @Injectable()
 export class AuthService {
-  constructor(private readonly dataSource: DataSource, private readonly config: ConfigService) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly config: ConfigService,
+    private readonly jwt: JwtService,
+  ) {}
 
   async register(dto: RegisterDto) {
     const username = dto.username.trim();
@@ -160,6 +175,20 @@ export class AuthService {
   }
 
   async authenticateToken(token: string): Promise<AuthenticatedUser> {
+    let claims: SessionClaims;
+    try {
+      claims = await this.jwt.verifyAsync<SessionClaims>(token, {
+        algorithms: ['HS256'],
+        issuer: this.config.get<string>('JWT_ISSUER', 'cs5x5-api'),
+        audience: this.config.get<string>('JWT_AUDIENCE', 'cs5x5-web'),
+      });
+    } catch {
+      throw new UnauthorizedException('Sessão inválida ou expirada.');
+    }
+    const userId = Number(claims.sub);
+    if (!Number.isSafeInteger(userId) || userId < 1 || !claims.jti) {
+      throw new UnauthorizedException('Sessão inválida ou expirada.');
+    }
     const rows = await this.dataSource.query<Array<AuthenticatedUser>>(
       `SELECT u.id, u.username, u.email, u.role, u.status
        FROM user_sessions s
@@ -167,11 +196,17 @@ export class AuthService {
        WHERE s.token_hash = $1
          AND s.revoked_at IS NULL
          AND s.expires_at > now()
-         AND u.status = 'active'
-       LIMIT 1`,
-      [this.hashToken(token)],
+          AND u.status = 'active'
+          AND u.id = $2
+        LIMIT 1`,
+      [this.hashToken(token), userId],
     );
     if (!rows[0]) throw new UnauthorizedException('Sessão inválida ou expirada.');
+    await this.dataSource.query(
+      `UPDATE user_sessions SET last_used_at = now()
+       WHERE token_hash = $1 AND last_used_at < now() - interval '5 minutes'`,
+      [this.hashToken(token)],
+    );
     return rows[0];
   }
 
@@ -183,13 +218,27 @@ export class AuthService {
     return { loggedOut: true };
   }
 
-  private async createSession(user: AuthenticatedUser, manager = this.dataSource.manager) {
-    const token = randomBytes(32).toString('base64url');
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  private async createSession(user: AuthenticatedUser, manager = this.dataSource.manager): Promise<AuthSession> {
+    const configuredHours = user.role === 'admin'
+      ? Number(this.config.get<string>('ADMIN_SESSION_HOURS', '2'))
+      : Number(this.config.get<string>('USER_SESSION_HOURS', '168'));
+    const sessionHours = Number.isFinite(configuredHours) ? Math.min(Math.max(configuredHours, 1), 24 * 30) : 2;
+    const expiresAt = new Date(Date.now() + sessionHours * 60 * 60 * 1000);
+    const token = await this.jwt.signAsync(
+      { sub: String(user.id), jti: randomBytes(16).toString('base64url') },
+      { expiresIn: `${sessionHours}h` },
+    );
     await manager.query(
       `INSERT INTO user_sessions (user_id, token_hash, expires_at)
        VALUES ($1, $2, $3)`,
       [user.id, this.hashToken(token), expiresAt],
+    );
+    await manager.query(
+      `UPDATE user_sessions SET revoked_at = now()
+       WHERE user_id = $1 AND revoked_at IS NULL AND id NOT IN (
+         SELECT id FROM user_sessions WHERE user_id = $1 AND revoked_at IS NULL ORDER BY created_at DESC LIMIT 5
+       )`,
+      [user.id],
     );
     return { token, expiresAt: expiresAt.toISOString(), user };
   }

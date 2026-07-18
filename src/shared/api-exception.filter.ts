@@ -40,8 +40,6 @@ export class ApiExceptionFilter implements ExceptionFilter {
       };
       const mapped = databaseError.code ? mappings[databaseError.code] : undefined;
       if (mapped) [status, message] = mapped;
-    } else if (exception instanceof Error) {
-      message = exception.message;
     }
 
     if (status >= 500) {
