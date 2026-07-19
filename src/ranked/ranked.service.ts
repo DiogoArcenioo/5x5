@@ -1,7 +1,9 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
-import { RankedEventDto, RankedEventType } from './dto/ranked-event.dto';
+import { RankedEventType } from './dto/ranked-event.dto';
 import { RankedCycleService, RANKING_TIME_ZONE } from './ranked-cycle.service';
+import { RankedCampaign, RankedSimulationService } from './ranked-simulation.service';
+import { attachSimulationContext, campaignDiagnosticContext } from '../shared/simulation-diagnostics';
 
 type RankedRunRow = {
   id: number;
@@ -14,6 +16,8 @@ type RankedRunRow = {
   quarterfinalWon: boolean;
   semifinalWon: boolean;
   finalWon: boolean;
+  campaign: RankedCampaign | null;
+  campaignRevision: number;
   createdAt: Date;
   completedAt: Date | null;
 };
@@ -23,6 +27,7 @@ export class RankedService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly cycles: RankedCycleService,
+    private readonly simulation: RankedSimulationService,
   ) {}
 
   async leaderboard(limit = 100) {
@@ -51,10 +56,15 @@ export class RankedService {
 
   async today(userId: number) {
     const cycle = await this.cycles.current();
-    const [run] = await this.dataSource.query<RankedRunRow[]>(`${this.runSelect()}
+    let [run] = await this.dataSource.query<RankedRunRow[]>(`${this.runSelect()}
       WHERE r.user_id = $1
         AND r.cycle_id = $2
       ORDER BY r.created_at DESC LIMIT 1`, [userId, cycle.id]);
+    if (run?.status === 'in_progress' && !run.campaign) {
+      const campaign = this.simulation.create(cycle.field);
+      await this.dataSource.query('UPDATE ranked_runs SET campaign = $2::jsonb, campaign_revision = 0, updated_at = now() WHERE id = $1', [run.id, JSON.stringify(campaign)]);
+      [run] = await this.dataSource.query<RankedRunRow[]>(`${this.runSelect()} WHERE r.id = $1`, [run.id]);
+    }
     const [access] = await this.dataSource.query<Array<{ unlimited: boolean; attemptsToday: number; extraAttemptsToday: number }>>(`
       SELECT u.ranked_unlimited AS unlimited,
              (SELECT count(r.id)::integer FROM ranked_runs r WHERE r.user_id = u.id
@@ -117,13 +127,14 @@ export class RankedService {
         throw new ConflictException('Você já usou sua partida ranqueada de hoje. Volte amanhã.');
       }
       const rows = await manager.query<RankedRunRow[]>(`
-        INSERT INTO ranked_runs (user_id, cycle_id, played_on)
-        VALUES ($1, $2, $3::date)
+        INSERT INTO ranked_runs (user_id, cycle_id, played_on, campaign)
+        VALUES ($1, $2, $3::date, $4::jsonb)
         RETURNING id, user_id AS "userId", cycle_id AS "cycleId", played_on::text AS "playedOn", status, score,
                   swiss_wins AS "swissWins", quarterfinal_won AS "quarterfinalWon",
-                  semifinal_won AS "semifinalWon", final_won AS "finalWon",
+                  semifinal_won AS "semifinalWon", final_won AS "finalWon", campaign,
+                  campaign_revision AS "campaignRevision",
                   created_at AS "createdAt", completed_at AS "completedAt"
-      `, [userId, cycle.id, daily.playedOn]);
+      `, [userId, cycle.id, daily.playedOn, JSON.stringify(this.simulation.create(cycle.field))]);
       const attemptsToday = daily.attemptsToday + 1;
       return {
         ...rows[0], canPlay: settings.unlimited || attemptsToday < dailyLimit,
@@ -133,41 +144,45 @@ export class RankedService {
     });
   }
 
-  async addEvent(userId: number, runId: number, dto: RankedEventDto) {
-    return this.dataSource.transaction(async (manager) => {
-      const run = await this.lockRun(manager, userId, runId);
-      const duplicate = await manager.query(
-        'SELECT 1 FROM ranked_run_events WHERE run_id = $1 AND event_key = $2',
-        [runId, dto.eventKey],
-      ) as Array<Record<string, unknown>>;
-      if (duplicate[0]) return { run, awarded: 0, duplicate: true };
-      if (run.status !== 'in_progress') throw new ConflictException('Esta partida ranqueada já foi encerrada.');
+  strategy(userId: number, runId: number, revision: number, roles: string[]) { return this.mutateCampaign(userId, runId, revision, 'strategy', (manager, campaign) => this.simulation.strategy(manager, campaign, roles)); }
+  reroll(userId: number, runId: number, revision: number) { return this.mutateCampaign(userId, runId, revision, 'draft.reroll', (manager, campaign) => this.simulation.reroll(manager, campaign)); }
+  pick(userId: number, runId: number, revision: number, slug: string, slot: number) { return this.mutateCampaign(userId, runId, revision, 'draft.pick', (manager, campaign) => this.simulation.pick(manager, campaign, slug, slot)); }
+  layout(userId: number, runId: number, revision: number, slugs: Array<string|null>, roles: string[]) { return this.mutateCampaign(userId, runId, revision, 'draft.layout', (manager, campaign) => this.simulation.layout(manager, campaign, slugs, roles)); }
+  finalize(userId: number, runId: number, revision: number) { return this.mutateCampaign(userId, runId, revision, 'draft.finalize', (manager, campaign) => this.simulation.finalize(manager, campaign)); }
 
-      const points = this.validateProgression(run, dto.eventType);
-      await manager.query(
-        'INSERT INTO ranked_run_events (run_id, event_key, event_type, points) VALUES ($1, $2, $3, $4)',
-        [runId, dto.eventKey, dto.eventType, points],
-      );
-      const update = this.progressionUpdate(dto.eventType);
-      await manager.query(`
-        UPDATE ranked_runs SET score = score + $2, ${update}, updated_at = now()
-        WHERE id = $1
-      `, [runId, points]);
-      const updatedRows = await manager.query<RankedRunRow[]>(`${this.runSelect()} WHERE r.id = $1`, [runId]);
-      const updated = updatedRows[0];
-      if (!updated) throw new NotFoundException('Partida ranqueada não encontrada após atualizar a pontuação.');
-      return { run: updated, awarded: points, duplicate: false };
+  advance(userId: number, runId: number, expectedRevision: number) {
+    return this.dataSource.transaction(async (manager) => {
+      let run: RankedRunRow | undefined;
+      try {
+      run = await this.lockRun(manager, userId, runId);
+      if (run.status !== 'in_progress' || !run.campaign) throw new ConflictException('A campanha ranqueada não está disponível.');
+      if (run.campaignRevision !== expectedRevision) throw this.revisionConflict(run);
+      const result = this.simulation.advance(run.campaign);
+      const revision = run.campaignRevision + 1;
+      if (result.awarded && result.eventType) {
+        const eventType = result.eventType as RankedEventType;
+        await manager.query('INSERT INTO ranked_run_events (run_id, event_key, event_type, points) VALUES ($1, $2, $3, $4)', [runId, `server-${revision}-${eventType}`, eventType, result.awarded]);
+        await manager.query(`UPDATE ranked_runs SET score = score + $2, ${this.progressionUpdate(eventType)} WHERE id = $1`, [runId, result.awarded]);
+      }
+      const completed = result.campaign.stage === 'completed';
+      await manager.query(`UPDATE ranked_runs SET campaign = $2::jsonb, campaign_revision = $3, status = CASE WHEN $4 THEN 'completed' ELSE status END, completed_at = CASE WHEN $4 THEN COALESCE(completed_at, now()) ELSE completed_at END, updated_at = now() WHERE id = $1`, [runId, JSON.stringify(result.campaign), revision, completed]);
+      const [updated] = await manager.query<RankedRunRow[]>(`${this.runSelect()} WHERE r.id = $1`, [runId]);
+      return { run: updated, campaign: result.campaign, matches: result.matches, awarded: result.awarded, eventType: result.eventType };
+      } catch (error) {
+        throw attachSimulationContext(error, campaignDiagnosticContext(runId, 'advance', run?.campaign));
+      }
     });
   }
-
   async complete(userId: number, runId: number) {
-    await this.lockRun(this.dataSource.manager, userId, runId, false);
+    const current = await this.lockRun(this.dataSource.manager, userId, runId, false);
+    if (current.campaign?.stage !== 'completed') throw new ConflictException('A campanha ainda possui partidas oficiais pendentes.');
     const [run] = await this.dataSource.query<RankedRunRow[]>(`
       UPDATE ranked_runs SET status = 'completed', completed_at = COALESCE(completed_at, now()), updated_at = now()
       WHERE id = $1 AND user_id = $2
       RETURNING id, user_id AS "userId", cycle_id AS "cycleId", played_on::text AS "playedOn", status, score,
                 swiss_wins AS "swissWins", quarterfinal_won AS "quarterfinalWon",
-                semifinal_won AS "semifinalWon", final_won AS "finalWon",
+                  semifinal_won AS "semifinalWon", final_won AS "finalWon", campaign,
+                  campaign_revision AS "campaignRevision",
                 created_at AS "createdAt", completed_at AS "completedAt"
     `, [runId, userId]);
     return run;
@@ -216,8 +231,31 @@ export class RankedService {
   private runSelect() {
     return `SELECT r.id, r.user_id AS "userId", r.cycle_id AS "cycleId", r.played_on::text AS "playedOn", r.status, r.score,
                    r.swiss_wins AS "swissWins", r.quarterfinal_won AS "quarterfinalWon",
-                   r.semifinal_won AS "semifinalWon", r.final_won AS "finalWon",
+                   r.semifinal_won AS "semifinalWon", r.final_won AS "finalWon", r.campaign,
+                   r.campaign_revision AS "campaignRevision",
                    r.created_at AS "createdAt", r.completed_at AS "completedAt"
             FROM ranked_runs r`;
+  }
+
+  private mutateCampaign(userId: number, runId: number, expectedRevision: number, action: string, mutate: (manager: EntityManager, campaign: RankedCampaign) => RankedCampaign | Promise<RankedCampaign>) {
+    return this.dataSource.transaction(async (manager) => {
+      let run: RankedRunRow | undefined;
+      try {
+      run = await this.lockRun(manager, userId, runId);
+      if (run.status !== 'in_progress' || !run.campaign) throw new ConflictException('A campanha ranqueada não está disponível.');
+      if (run.campaignRevision !== expectedRevision) throw this.revisionConflict(run);
+      const campaign = await mutate(manager, run.campaign);
+      const revision = run.campaignRevision + 1;
+      await manager.query('UPDATE ranked_runs SET campaign = $2::jsonb, campaign_revision = $3, updated_at = now() WHERE id = $1', [runId, JSON.stringify(campaign), revision]);
+      const [updated] = await manager.query<RankedRunRow[]>(`${this.runSelect()} WHERE r.id = $1`, [runId]);
+      return { run: updated, campaign };
+      } catch (error) {
+        throw attachSimulationContext(error, campaignDiagnosticContext(runId, action, run?.campaign));
+      }
+    });
+  }
+
+  private revisionConflict(run: RankedRunRow) {
+    return new ConflictException({ code: 'CAMPAIGN_REVISION_CONFLICT', message: 'A campanha foi atualizada em outra solicitação.', mode: 'ranked', run });
   }
 }

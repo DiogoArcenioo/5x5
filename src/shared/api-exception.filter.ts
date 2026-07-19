@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { QueryFailedError } from 'typeorm';
 import type { Request, Response } from 'express';
+import { createDiagnosticCode, simulationContextOf } from './simulation-diagnostics';
 
 type PostgresError = Error & { code?: string; detail?: string };
 
@@ -22,10 +23,15 @@ export class ApiExceptionFilter implements ExceptionFilter {
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let message: unknown = 'Erro interno do servidor.';
+    let exceptionPayload: Record<string, unknown> = {};
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
-      message = exception.getResponse();
+      const exceptionResponse = exception.getResponse();
+      if (typeof exceptionResponse === 'object' && exceptionResponse !== null) {
+        exceptionPayload = exceptionResponse as Record<string, unknown>;
+        message = exceptionPayload.message ?? message;
+      } else message = exceptionResponse;
     } else if (exception instanceof QueryFailedError) {
       const databaseError = exception.driverError as PostgresError;
       const mappings: Record<string, [number, string]> = {
@@ -42,17 +48,36 @@ export class ApiExceptionFilter implements ExceptionFilter {
       if (mapped) [status, message] = mapped;
     }
 
-    if (status >= 500) {
-      this.logger.error(
-        exception instanceof Error ? exception.stack : String(exception),
-      );
+    const attachedContext = simulationContextOf(exception);
+    const runMatch = request.path.match(/^\/api\/(ranked|casual)\/runs\/([^/]+)/);
+    const isCampaignFailure = Boolean(attachedContext || runMatch);
+    const diagnosticCode = isCampaignFailure ? createDiagnosticCode() : undefined;
+    if (isCampaignFailure) {
+      const diagnostic = {
+        diagnosticCode,
+        campaignId: attachedContext?.campaignId ?? runMatch?.[2],
+        action: attachedContext?.action ?? (request.path.split('/').slice(5).join('.') || 'request'),
+        stage: attachedContext?.stage,
+        round: attachedContext?.round,
+        status,
+        method: request.method,
+        path: request.path,
+        error: exception instanceof Error ? exception.message : String(exception),
+      };
+      const serialized = JSON.stringify(diagnostic);
+      if (status >= 500) this.logger.error(serialized, exception instanceof Error ? exception.stack : undefined);
+      else this.logger.warn(serialized);
+    } else if (status >= 500) {
+      this.logger.error(exception instanceof Error ? exception.stack : String(exception));
     }
 
     response.status(status).json({
+      ...exceptionPayload,
       statusCode: status,
       message,
       path: request.url,
       timestamp: new Date().toISOString(),
+      ...(diagnosticCode ? { diagnosticCode } : {}),
     });
   }
 }

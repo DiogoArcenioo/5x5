@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, ParseIntPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuthenticatedRequest, SessionAuthGuard } from '../auth/auth.guards';
-import { RankedEventDto } from './dto/ranked-event.dto';
+import { RankedAdvanceDto, RankedDraftLayoutDto, RankedDraftPickDto, RankedRevisionDto, RankedStrategyDto } from './dto/ranked-campaign.dto';
 import { RankedService } from './ranked.service';
 
 @ApiTags('ranked')
@@ -29,12 +29,23 @@ export class RankedController {
     return this.service.start(request.user.id);
   }
 
-  @Post('runs/:id/events')
-  @ApiBearerAuth()
-  @UseGuards(SessionAuthGuard)
-  addEvent(@Req() request: AuthenticatedRequest, @Param('id', ParseIntPipe) id: number, @Body() body: RankedEventDto) {
-    return this.service.addEvent(request.user.id, id, body);
-  }
+  @Post('runs/:id/strategy') @ApiBearerAuth() @UseGuards(SessionAuthGuard)
+  strategy(@Req() request: AuthenticatedRequest, @Param('id', ParseIntPipe) id: number, @Body() body: RankedStrategyDto) { return this.service.strategy(request.user.id, id, body.revision, body.roles); }
+
+  @Post('runs/:id/draft/reroll') @ApiBearerAuth() @UseGuards(SessionAuthGuard)
+  reroll(@Req() request: AuthenticatedRequest, @Param('id', ParseIntPipe) id: number, @Body() body: RankedRevisionDto) { return this.service.reroll(request.user.id, id, body.revision); }
+
+  @Post('runs/:id/draft/pick') @ApiBearerAuth() @UseGuards(SessionAuthGuard)
+  pick(@Req() request: AuthenticatedRequest, @Param('id', ParseIntPipe) id: number, @Body() body: RankedDraftPickDto) { return this.service.pick(request.user.id, id, body.revision, body.slug, body.slot); }
+
+  @Post('runs/:id/draft/layout') @ApiBearerAuth() @UseGuards(SessionAuthGuard)
+  layout(@Req() request: AuthenticatedRequest, @Param('id', ParseIntPipe) id: number, @Body() body: RankedDraftLayoutDto) { return this.service.layout(request.user.id, id, body.revision, body.slugs, body.roles); }
+
+  @Post('runs/:id/finalize') @ApiBearerAuth() @UseGuards(SessionAuthGuard)
+  finalize(@Req() request: AuthenticatedRequest, @Param('id', ParseIntPipe) id: number, @Body() body: RankedRevisionDto) { return this.service.finalize(request.user.id, id, body.revision); }
+
+  @Post('runs/:id/advance') @ApiBearerAuth() @UseGuards(SessionAuthGuard)
+  advance(@Req() request: AuthenticatedRequest, @Param('id', ParseIntPipe) id: number, @Body() body: RankedAdvanceDto) { return this.service.advance(request.user.id, id, body.revision); }
 
   @Post('runs/:id/complete')
   @ApiBearerAuth()

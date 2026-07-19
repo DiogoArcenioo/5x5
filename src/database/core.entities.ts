@@ -28,6 +28,7 @@ export const TeamEntity = new EntitySchema({
     shortName: { name: 'short_name', type: 'varchar', length: 20, nullable: true },
     slug: { type: 'varchar', length: 140, unique: true },
     countryId: { name: 'country_id', type: 'integer', nullable: true },
+    active: { type: 'boolean', default: true },
     createdAt,
     updatedAt,
   },
@@ -115,6 +116,8 @@ export const RankedRunEntity = new EntitySchema({
     quarterfinalWon: { name: 'quarterfinal_won', type: 'boolean', default: false },
     semifinalWon: { name: 'semifinal_won', type: 'boolean', default: false },
     finalWon: { name: 'final_won', type: 'boolean', default: false },
+    campaign: { type: 'jsonb', nullable: true },
+    campaignRevision: { name: 'campaign_revision', type: 'integer', default: 0 },
     createdAt,
     updatedAt,
     completedAt: { name: 'completed_at', type: 'timestamptz', nullable: true },
@@ -144,6 +147,20 @@ export const RankedRunEventEntity = new EntitySchema({
   },
 });
 
+export const CasualRunEntity = new EntitySchema({
+  name: 'CasualRun', tableName: 'casual_runs',
+  columns: {
+    id: { type: 'uuid', primary: true },
+    status: { type: 'varchar', length: 20, default: 'in_progress' },
+    campaign: { type: 'jsonb' },
+    campaignRevision: { name: 'campaign_revision', type: 'integer', default: 0 },
+    expiresAt: { name: 'expires_at', type: 'timestamptz' },
+    createdAt,
+    updatedAt,
+    completedAt: { name: 'completed_at', type: 'timestamptz', nullable: true },
+  },
+});
+
 export const CORE_ENTITIES = [
   RegionEntity,
   CountryEntity,
@@ -155,4 +172,5 @@ export const CORE_ENTITIES = [
   RankedCycleEntity,
   RankedRunEntity,
   RankedRunEventEntity,
+  CasualRunEntity,
 ];

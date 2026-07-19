@@ -9,6 +9,7 @@
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main.js",
     "typecheck": "tsc --noEmit",
+    "test": "node --test --test-concurrency=1 test/*.test.cjs",
     "db:reset": "node database/reset.js",
     "db:migrate": "node database/migrate.js",
     "db:sync-hltv-2017-2019": "node database/sync-hltv-annual-stats.js",

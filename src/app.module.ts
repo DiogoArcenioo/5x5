@@ -14,6 +14,7 @@ import { AdminUsersModule } from './admin-users/admin-users.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { validateEnvironment } from './config/environment';
 import { InternalApiKeyGuard } from './security/internal-api-key.guard';
+import { CasualModule } from './casual/casual.module';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { InternalApiKeyGuard } from './security/internal-api-key.guard';
     }),
     AuthModule,
     RankedModule,
+    CasualModule,
     AdminUsersModule,
     NotificationsModule,
     HealthModule,

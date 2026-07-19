@@ -76,6 +76,7 @@ export class RankedCycleService {
       SELECT t.slug AS "teamSlug", pty.year::integer AS year
       FROM teams t
       JOIN player_team_years pty ON pty.team_id = t.id
+      WHERE t.active = true
       GROUP BY t.id, t.slug, pty.year
       HAVING count(DISTINCT pty.player_id) >= 5
       ORDER BY t.slug, pty.year

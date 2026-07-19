@@ -23,7 +23,7 @@ async function bootstrap(): Promise<void> {
   app.use(json({ limit: '64kb' }));
   app.use(urlencoded({ extended: false, limit: '64kb' }));
   app.use((request: Request, response: Response, next: NextFunction) => {
-    if (/^\/api\/(auth|admin|ranked)(\/|$)/.test(request.path)) {
+    if (/^\/api\/(auth|admin|ranked|casual)(\/|$)/.test(request.path)) {
       response.setHeader('Cache-Control', 'no-store, max-age=0');
       response.setHeader('Pragma', 'no-cache');
     }

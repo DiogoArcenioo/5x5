@@ -21,6 +21,7 @@ export class CatalogService {
         FROM teams t
         LEFT JOIN countries c ON c.id=t.country_id
         LEFT JOIN regions r ON r.id=c.region_id
+        WHERE t.active = true
         ORDER BY t.name
       `) as Promise<TeamRow[]>,
       this.dataSource.query(`
@@ -37,10 +38,16 @@ export class CatalogService {
           SELECT pty.year, pty.overall, pty.firepower, pty.entrying, pty.trading,
                  pty.opening, pty.clutching, pty.sniping, pty.utility
           FROM player_team_years pty
+          JOIN teams linked_team ON linked_team.id = pty.team_id AND linked_team.active = true
           WHERE pty.player_id = p.id
           ORDER BY pty.year DESC
           LIMIT 1
         ) latest ON true
+        WHERE EXISTS (
+          SELECT 1 FROM player_team_years visible_link
+          JOIN teams visible_team ON visible_team.id = visible_link.team_id AND visible_team.active = true
+          WHERE visible_link.player_id = p.id
+        )
         ORDER BY latest.overall DESC NULLS LAST, p.nickname
       `) as Promise<Array<Record<string, unknown>>>,
       this.dataSource.query(`
@@ -54,6 +61,7 @@ export class CatalogService {
                  'sniping', pty.sniping, 'utility', pty.utility
                ) ORDER BY pty.overall DESC, p.nickname) AS players
         FROM player_team_years pty
+        JOIN teams active_team ON active_team.id=pty.team_id AND active_team.active = true
         JOIN players p ON p.id=pty.player_id
         LEFT JOIN countries c ON c.id=p.country_id
         GROUP BY pty.team_id, pty.year
@@ -83,16 +91,16 @@ export class CatalogService {
       SELECT
         (SELECT count(*)::integer FROM regions) AS regions,
         (SELECT count(*)::integer FROM countries) AS countries,
-        (SELECT count(*)::integer FROM teams) AS teams,
-        (SELECT count(*)::integer FROM players) AS players,
-        (SELECT count(*)::integer FROM player_team_years) AS links
+        (SELECT count(*)::integer FROM teams WHERE active = true) AS teams,
+        (SELECT count(DISTINCT pty.player_id)::integer FROM player_team_years pty JOIN teams t ON t.id=pty.team_id WHERE t.active = true) AS players,
+        (SELECT count(*)::integer FROM player_team_years pty JOIN teams t ON t.id=pty.team_id WHERE t.active = true) AS links
     `) as Array<Record<string, unknown>>;
     return counts;
   }
 
   async teams(query: CatalogQueryDto): Promise<Record<string, unknown>> {
     const values: unknown[] = [];
-    const conditions: string[] = [];
+    const conditions: string[] = ['t.active = true'];
     const add = (value: unknown) => { values.push(value); return `$${values.length}`; };
     if (query.search) {
       const term = add(`%${query.search.trim()}%`);
@@ -127,7 +135,7 @@ export class CatalogService {
       SELECT t.id, t.name, t.short_name AS "shortName", t.slug,
              t.country_id AS "countryId", c.code AS "countryCode", c.name AS "countryName", r.name AS "regionName"
       FROM teams t LEFT JOIN countries c ON c.id=t.country_id LEFT JOIN regions r ON r.id=c.region_id
-      WHERE upper(t.slug)=upper($1)
+      WHERE upper(t.slug)=upper($1) AND t.active = true
     `, [slug]) as Array<Record<string, unknown>>;
     if (!team) throw new NotFoundException('Time não encontrado.');
     const lineups = await this.dataSource.query(`
@@ -151,7 +159,11 @@ export class CatalogService {
 
   async players(query: CatalogQueryDto): Promise<Record<string, unknown>> {
     const values: unknown[] = [];
-    const conditions: string[] = [];
+    const conditions: string[] = [`EXISTS (
+      SELECT 1 FROM player_team_years visible_link
+      JOIN teams visible_team ON visible_team.id = visible_link.team_id AND visible_team.active = true
+      WHERE visible_link.player_id = p.id
+    )`];
     const add = (value: unknown) => { values.push(value); return `$${values.length}`; };
     if (query.search) {
       const term = add(`%${query.search.trim()}%`);
@@ -165,6 +177,7 @@ export class CatalogService {
       statsYear = `AND pty.year = ${year}`;
       conditions.push(`EXISTS (
         SELECT 1 FROM player_team_years yearly
+        JOIN teams yearly_team ON yearly_team.id = yearly.team_id AND yearly_team.active = true
         WHERE yearly.player_id = p.id AND yearly.year = ${year}
       )`);
     }
@@ -184,6 +197,7 @@ export class CatalogService {
         SELECT pty.year, pty.overall, pty.firepower, pty.entrying, pty.trading,
                pty.opening, pty.clutching, pty.sniping, pty.utility
         FROM player_team_years pty
+        JOIN teams stats_team ON stats_team.id = pty.team_id AND stats_team.active = true
         WHERE pty.player_id = p.id ${statsYear}
         ORDER BY pty.year DESC
         LIMIT 1
@@ -209,18 +223,24 @@ export class CatalogService {
         SELECT pty.year, pty.overall, pty.firepower, pty.entrying, pty.trading,
                pty.opening, pty.clutching, pty.sniping, pty.utility
         FROM player_team_years pty
+        JOIN teams stats_team ON stats_team.id = pty.team_id AND stats_team.active = true
         WHERE pty.player_id = p.id
         ORDER BY pty.year DESC
         LIMIT 1
       ) latest ON true
       WHERE upper(p.slug)=upper($1)
+        AND EXISTS (
+          SELECT 1 FROM player_team_years visible_link
+          JOIN teams visible_team ON visible_team.id = visible_link.team_id AND visible_team.active = true
+          WHERE visible_link.player_id = p.id
+        )
     `, [slug]) as Array<Record<string, unknown>>;
     if (!player) throw new NotFoundException('Jogador não encontrado.');
     const teams = await this.dataSource.query(`
       SELECT pty.id, pty.year, t.id AS "teamId", t.name AS "teamName", t.slug AS "teamSlug",
              pty.overall, pty.firepower, pty.entrying, pty.trading, pty.opening,
              pty.clutching, pty.sniping, pty.utility
-      FROM player_team_years pty JOIN teams t ON t.id=pty.team_id
+      FROM player_team_years pty JOIN teams t ON t.id=pty.team_id AND t.active = true
       WHERE pty.player_id=$1 ORDER BY pty.year DESC, t.name
     `, [player.id]);
     return { ...player, teams };
