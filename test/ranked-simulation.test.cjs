@@ -83,3 +83,50 @@ test('campanha serializada retoma de forma determinística no mesmo ponto', asyn
   assert.deepEqual(resumed, expected);
   assert.deepEqual(restored, campaign);
 });
+
+test('mapas usam MR12 e overtime MR3 repetivel sem permitir placar 13 a 12', async () => {
+  const service = new RankedSimulationService(), manager = new CatalogManager();
+  const campaign = await draftComplete(service, manager);
+  await service.finalize(manager, campaign);
+  const [teamA, teamB] = campaign.teams;
+  let sawOvertime = false, sawRepeatedOvertime = false;
+
+  for (let seed = 1; seed <= 2000; seed++) {
+    const result = service.map(teamA, teamB, 'Mirage', service.rng(seed));
+    const winnerScore = Math.max(result.aScore, result.bScore);
+    const loserScore = Math.min(result.aScore, result.bScore);
+
+    assert.notEqual(result.aScore, result.bScore);
+    assert.notDeepEqual([winnerScore, loserScore], [13, 12]);
+
+    if (result.overtimePeriods === 0) {
+      assert.equal(winnerScore, 13);
+      assert.ok(loserScore <= 11);
+      assert.ok(result.rounds.every(round => round.period === 'regulation' && round.overtimePeriod === 0));
+      continue;
+    }
+
+    sawOvertime = true;
+    assert.equal(winnerScore, 13 + result.overtimePeriods * 3);
+    assert.ok(winnerScore - loserScore >= 2);
+    assert.ok(winnerScore - loserScore <= 4);
+
+    const regulation = result.rounds.filter(round => round.period === 'regulation');
+    assert.equal(regulation.length, 24);
+    assert.equal(regulation.at(-1).scoreA, 12);
+    assert.equal(regulation.at(-1).scoreB, 12);
+
+    for (let period = 1; period <= result.overtimePeriods; period++) {
+      const overtime = result.rounds.filter(round => round.overtimePeriod === period);
+      assert.ok(overtime.length >= 4 && overtime.length <= 6);
+      if (period < result.overtimePeriods) {
+        assert.equal(overtime.length, 6);
+        assert.equal(overtime.at(-1).scoreA, overtime.at(-1).scoreB);
+      }
+    }
+    if (result.overtimePeriods > 1) sawRepeatedOvertime = true;
+  }
+
+  assert.ok(sawOvertime, 'a amostra deve conter ao menos um overtime');
+  assert.ok(sawRepeatedOvertime, 'a amostra deve conter ao menos um overtime repetido');
+});

@@ -16,8 +16,8 @@ export type LineupAnalysis = {evaluation:TeamEvaluation;strength:number;base:num
 type CampaignTeam = { id:string; name:string; tag:string; year:number|string; strength:number; evaluation:TeamEvaluation; wins:number; losses:number; status:'playing'|'qualified'|'eliminated'; opponents:string[]; isUser?:boolean };
 type DraftRosterEntry = { slug:string; year:number; teamSlug:string };
 type DraftPool = { year:number; teamSlug:string; slugs:string[] };
-type RoundEvent = { aWon:boolean; chanceA:number; deathsA:number[]; deathsB:number[]; killsA:number[]; killsB:number[]; assistsA:number[]; assistsB:number[]; scoreA:number; scoreB:number };
-type MapResult = { name:string; aScore:number; bScore:number; winnerId:string; mapStrengthA:number; mapStrengthB:number; rounds:RoundEvent[] };
+type RoundEvent = { aWon:boolean; chanceA:number; deathsA:number[]; deathsB:number[]; killsA:number[]; killsB:number[]; assistsA:number[]; assistsB:number[]; scoreA:number; scoreB:number; period:'regulation'|'overtime'; overtimePeriod:number };
+type MapResult = { name:string; aScore:number; bScore:number; winnerId:string; mapStrengthA:number; mapStrengthB:number; overtimePeriods:number; rounds:RoundEvent[] };
 type CampaignMatch = { aId:string;bId:string;teamA:string;teamB:string;winnerId:string;loserId:string;format:'BO1'|'BO3'|'MD5';score:string;chanceA:number;effectiveA:number;effectiveB:number;isUser:boolean;pool:string;mapResults:MapResult[] };
 export type RankedCampaign = {
   version:2; seed:number; stage:'strategy'|'draft'|'swiss'|'playoffs'|'completed'; roles:RoleCode[];
@@ -47,6 +47,10 @@ const BALANCED:RoleCode[]=['entry','awper','support','rifler','lurker'];
 const CORE_ROLES:RoleCode[]=['entry','awper','support'];
 const ROLE_LABELS:Record<RoleCode,string>={entry:'Entry Fragger',awper:'AWPer',support:'Support',rifler:'Rifler',lurker:'Lurker',trader:'Trader'};
 const SKILL_LABELS:Record<SkillKey,string>={firepower:'Firepower',entrying:'Entrying',trading:'Trading',opening:'Opening',clutching:'Clutching',sniping:'Sniping',utility:'Utility'};
+const REGULATION_MAX_ROUNDS=24;
+const REGULATION_WIN_SCORE=13;
+const OVERTIME_MAX_ROUNDS=6;
+const OVERTIME_WIN_ROUNDS=4;
 
 @Injectable()
 export class RankedSimulationService {
@@ -165,8 +169,11 @@ export class RankedSimulationService {
   }
   private map(a:CampaignTeam,b:CampaignTeam,name:string,rng:()=>number):MapResult{
     const strengthA=this.mapStrength(a,name),strengthB=this.mapStrength(b,name),formA=(rng()+rng()-1)*2.5,formB=(rng()+rng()-1)*2.5;let scoreA=0,scoreB=0;const rounds:RoundEvent[]=[];
-    while(scoreA<13&&scoreB<13){const effectiveA=strengthA+formA+(this.roundEdge(a)-this.roundEdge(b))*.08+(rng()+rng()-1)*2.2,effectiveB=strengthB+formB,chanceA=Math.max(.28,Math.min(.72,1/(1+Math.pow(10,(effectiveB-effectiveA)/90)))),aWon=rng()<chanceA;if(aWon)scoreA++;else scoreB++;const loser=3+Math.floor(rng()*3),winner=Math.floor(rng()*Math.min(4,loser)),countA=aWon?winner:loser,countB=aWon?loser:winner,deaths=(count:number)=>this.shuffle([0,1,2,3,4],rng).slice(0,count);rounds.push({aWon,chanceA,deathsA:deaths(countA),deathsB:deaths(countB),killsA:Array.from({length:countB},()=>this.playerIndex(a,rng()<.32?'opening':'firepower',rng)),killsB:Array.from({length:countA},()=>this.playerIndex(b,rng()<.32?'opening':'firepower',rng)),assistsA:Array.from({length:Math.floor(countB*(.25+rng()*.45))},()=>this.playerIndex(a,'trading',rng)),assistsB:Array.from({length:Math.floor(countA*(.25+rng()*.45))},()=>this.playerIndex(b,'trading',rng)),scoreA,scoreB});}
-    return{name,aScore:scoreA,bScore:scoreB,winnerId:scoreA>scoreB?a.id:b.id,mapStrengthA:strengthA,mapStrengthB:strengthB,rounds};
+    const playRound=(period:'regulation'|'overtime',overtimePeriod:number)=>{const effectiveA=strengthA+formA+(this.roundEdge(a)-this.roundEdge(b))*.08+(rng()+rng()-1)*2.2,effectiveB=strengthB+formB,chanceA=Math.max(.28,Math.min(.72,1/(1+Math.pow(10,(effectiveB-effectiveA)/90)))),aWon=rng()<chanceA;if(aWon)scoreA++;else scoreB++;const loser=3+Math.floor(rng()*3),winner=Math.floor(rng()*Math.min(4,loser)),countA=aWon?winner:loser,countB=aWon?loser:winner,deaths=(count:number)=>this.shuffle([0,1,2,3,4],rng).slice(0,count);rounds.push({aWon,chanceA,deathsA:deaths(countA),deathsB:deaths(countB),killsA:Array.from({length:countB},()=>this.playerIndex(a,rng()<.32?'opening':'firepower',rng)),killsB:Array.from({length:countA},()=>this.playerIndex(b,rng()<.32?'opening':'firepower',rng)),assistsA:Array.from({length:Math.floor(countB*(.25+rng()*.45))},()=>this.playerIndex(a,'trading',rng)),assistsB:Array.from({length:Math.floor(countA*(.25+rng()*.45))},()=>this.playerIndex(b,'trading',rng)),scoreA,scoreB,period,overtimePeriod});return aWon;};
+    while(scoreA<REGULATION_WIN_SCORE&&scoreB<REGULATION_WIN_SCORE&&scoreA+scoreB<REGULATION_MAX_ROUNDS)playRound('regulation',0);
+    let overtimePeriods=0;
+    while(scoreA===scoreB){overtimePeriods++;let overtimeA=0,overtimeB=0;while(overtimeA<OVERTIME_WIN_ROUNDS&&overtimeB<OVERTIME_WIN_ROUNDS&&overtimeA+overtimeB<OVERTIME_MAX_ROUNDS){if(playRound('overtime',overtimePeriods))overtimeA++;else overtimeB++;}}
+    return{name,aScore:scoreA,bScore:scoreB,winnerId:scoreA>scoreB?a.id:b.id,mapStrengthA:strengthA,mapStrengthB:strengthB,overtimePeriods,rounds};
   }
   private mapOrder(a:CampaignTeam,b:CampaignTeam,format:string,rng:()=>number){const pool=this.shuffle(Object.keys(MAPS),rng),rank=(team:CampaignTeam,map:string)=>this.mapStrength(team,map);if(format==='MD5')return pool.sort((x,y)=>rank(a,y)+rank(b,y)-rank(a,x)-rank(b,x));if(format==='BO1'){while(pool.length>1){const team=pool.length%2?a:b;pool.splice(pool.reduce((worst,_,index,list)=>rank(team,list[index])<rank(team,list[worst])?index:worst,0),1);}return pool;}const pick=(team:CampaignTeam)=>pool.splice(pool.reduce((best,_,index,list)=>rank(team,list[index])>rank(team,list[best])?index:best,0),1)[0];return[pick(a),pick(b),pool[Math.floor(rng()*pool.length)]];}
   private mapStrength(team:CampaignTeam,map:string){const tactical=Object.entries(MAPS[map]).reduce((sum,[key,weight])=>sum+this.skillAverage(team,key as SkillKey)*(weight||0),0);return Number((team.strength*.72+tactical*.28).toFixed(2));}
