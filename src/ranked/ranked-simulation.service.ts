@@ -25,7 +25,10 @@ export type RankedCampaign = {
   analysis:LineupAnalysis|null;
   teams:CampaignTeam[]; swissRound:number; swissHistory:Array<{round:number;matches:CampaignMatch[]}>;
   playoffBracket:Array<{key:'quarter'|'semi'|'final';label:string;matches:Array<{a:CampaignTeam|null;b:CampaignTeam|null;result:CampaignMatch|null}>}>;
-  playoffStage:'quarter'|'semi'|'final'; outcome:null|{kind:'eliminated'|'champion';championName:string};
+  playoffStage:'quarter'|'semi'|'final'; outcome:null|{
+    kind:'eliminated'|'champion'; championName:string;
+    eliminationStage?:'swiss'|'quarter'|'semi'|'final'; eliminationRound?:number; eliminationRecord?:string;
+  };
 };
 
 const ROLE_WEIGHTS:Record<RoleCode,Partial<Record<SkillKey,number>>> = {
@@ -107,7 +110,7 @@ export class RankedSimulationService {
     const userMatch=matches.find(match=>match.isUser),won=userMatch?.winnerId==='user',awarded=won?10:0,user=campaign.teams.find(team=>team.id==='user')!;
     if(user.status!=='playing'){
       while(campaign.swissRound<5&&campaign.teams.some(team=>team.status==='playing')){const nextRound=campaign.swissRound+1,next=this.buildSwiss(campaign,nextRound);this.applyMatches(campaign.teams,next);campaign.swissRound=nextRound;campaign.swissHistory.push({round:nextRound,matches:next});}
-      if(user.status==='qualified'){campaign.stage='playoffs';this.startPlayoffs(campaign);}else{campaign.stage='playoffs';this.startPlayoffs(campaign);this.finishPlayoffs(campaign,'quarter');}
+      if(user.status==='qualified'){campaign.stage='playoffs';this.startPlayoffs(campaign);}else{campaign.stage='playoffs';this.startPlayoffs(campaign);this.finishPlayoffs(campaign,'quarter',{stage:'swiss',round,record:`${user.wins}-${user.losses}`});}
     }
     return {campaign,matches,awarded,eventType:won?'swiss_win':null};
   }
@@ -117,7 +120,7 @@ export class RankedSimulationService {
     current.matches.forEach(match=>{match.result=matches.find(result=>(result.aId===match.a?.id&&result.bId===match.b?.id)||(result.aId===match.b?.id&&result.bId===match.a?.id))||null;});
     const userResult=matches.find(match=>match.isUser),won=userResult?.winnerId==='user'; let awarded=0,eventType:string|null=null;
     if(won){awarded=current.key==='final'?50:30;eventType=current.key==='quarter'?'quarterfinal_win':current.key==='semi'?'semifinal_win':'final_win';}
-    if(!won){this.finishPlayoffs(campaign,current.key);return{campaign,matches,awarded,eventType};}
+    if(!won){this.finishPlayoffs(campaign,current.key,{stage:current.key});return{campaign,matches,awarded,eventType};}
     if(current.key==='final'){campaign.stage='completed';campaign.outcome={kind:'champion',championName:'SEU TIME · MISTO'};return{campaign,matches,awarded,eventType};}
     const winners=matches.map(result=>campaign.teams.find(team=>team.id===result.winnerId)!).filter(Boolean),nextKey=current.key==='quarter'?'semi':'final',next=campaign.playoffBracket.find(round=>round.key===nextKey)!;
     next.matches=nextKey==='semi'?[{a:winners[0],b:winners[1],result:null},{a:winners[2],b:winners[3],result:null}]:[{a:winners[0],b:winners[1],result:null}];campaign.playoffStage=nextKey;return{campaign,matches,awarded,eventType};
@@ -128,14 +131,14 @@ export class RankedSimulationService {
     const pairs=[[qualified[0],qualified[7]],[qualified[3],qualified[4]],[qualified[1],qualified[6]],[qualified[2],qualified[5]]];
     campaign.playoffBracket=[{key:'quarter',label:'QUARTAS DE FINAL',matches:pairs.map(([a,b])=>({a,b,result:null}))},{key:'semi',label:'SEMIFINAIS',matches:[{a:null,b:null,result:null},{a:null,b:null,result:null}]},{key:'final',label:'FINAL',matches:[{a:null,b:null,result:null}]}];campaign.playoffStage='quarter';
   }
-  private finishPlayoffs(campaign:RankedCampaign,start:'quarter'|'semi'|'final'){
+  private finishPlayoffs(campaign:RankedCampaign,start:'quarter'|'semi'|'final',elimination:{stage:'swiss'|'quarter'|'semi'|'final';round?:number;record?:string}){
     let key:'quarter'|'semi'|'final'=start;
     while(true){
       const current=campaign.playoffBracket.find(round=>round.key===key)!;
       const format=current.key==='final'?'MD5':'BO3';
       current.matches.forEach((match,index)=>{if(match.a&&match.b&&!match.result)match.result={...this.series(match.a,match.b,this.hash(`${campaign.seed}:playoff:${current.key}:${index}`),format),pool:'PLAYOFFS'};});
       const winners=current.matches.map(match=>campaign.teams.find(team=>team.id===match.result?.winnerId)!).filter(Boolean);
-      if(current.key==='final'){const champion=winners[0];campaign.playoffStage='final';campaign.stage='completed';campaign.outcome={kind:'eliminated',championName:champion?.name||'Campeão definido'};return;}
+      if(current.key==='final'){const champion=winners[0];campaign.playoffStage='final';campaign.stage='completed';campaign.outcome={kind:'eliminated',championName:champion?.name||'Campeão definido',eliminationStage:elimination.stage,eliminationRound:elimination.round,eliminationRecord:elimination.record};return;}
       const nextKey:'semi'|'final'=current.key==='quarter'?'semi':'final',next=campaign.playoffBracket.find(round=>round.key===nextKey)!;
       next.matches=nextKey==='semi'?[{a:winners[0],b:winners[1],result:null},{a:winners[2],b:winners[3],result:null}]:[{a:winners[0],b:winners[1],result:null}];
       campaign.playoffStage=nextKey;key=nextKey;

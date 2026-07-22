@@ -17,6 +17,20 @@ async function draftComplete(service, manager) {
   return campaign;
 }
 
+function makeResultsFollowStrength(service) {
+  service.series = (a, b, _seed, format) => {
+    const winner = a.strength >= b.strength ? a : b;
+    const loser = winner === a ? b : a;
+    return {
+      aId: a.id, bId: b.id, teamA: a.name, teamB: b.name,
+      winnerId: winner.id, loserId: loser.id, format,
+      score: format === 'BO1' ? (winner === a ? '13–0' : '0–13') : (winner === a ? '2–0' : '0–2'),
+      chanceA: winner === a ? 1 : 0, effectiveA: a.strength, effectiveB: b.strength,
+      isUser: Boolean(a.isUser || b.isUser), pool: '', mapResults: [],
+    };
+  };
+}
+
 test('draft oficial sorteia, impede escolha duplicada e gera análise no quinto jogador', async () => {
   const service = new RankedSimulationService(), manager = new CatalogManager();
   const campaign = service.create(makeField());
@@ -72,6 +86,33 @@ test('playoffs respeitam quartas/semi +30 e final +50 até concluir a campanha',
   const playoffEvents = events.filter(([event]) => event !== 'swiss_win');
   assert.deepEqual(playoffEvents, [['quarterfinal_win', 30], ['semifinal_win', 30], ['final_win', 50]]);
   assert.equal(campaign.playoffBracket[2].matches[0].result.winnerId, 'user');
+});
+
+test('registra exatamente a fase em que o usuário foi eliminado', async () => {
+  for (const expectedStage of ['swiss', 'quarter', 'semi', 'final']) {
+    const service = new RankedSimulationService(), manager = new CatalogManager();
+    makeResultsFollowStrength(service);
+    const campaign = await draftComplete(service, manager);
+    await service.finalize(manager, campaign);
+    campaign.teams.forEach(team => { team.strength = team.id === 'user' ? 1000 : 0; });
+
+    if (expectedStage === 'swiss') {
+      campaign.teams.find(team => team.id === 'user').strength = -1000;
+    } else {
+      while (campaign.stage === 'swiss') service.advance(campaign);
+      const winsBeforeElimination = { quarter: 0, semi: 1, final: 2 }[expectedStage];
+      for (let index = 0; index < winsBeforeElimination; index++) service.advance(campaign);
+      campaign.teams.find(team => team.id === 'user').strength = -1000;
+    }
+
+    while (campaign.stage !== 'completed') service.advance(campaign);
+    assert.equal(campaign.outcome.kind, 'eliminated');
+    assert.equal(campaign.outcome.eliminationStage, expectedStage);
+    if (expectedStage === 'swiss') {
+      assert.equal(campaign.outcome.eliminationRound, 3);
+      assert.equal(campaign.outcome.eliminationRecord, '0-3');
+    }
+  }
 });
 
 test('campanha serializada retoma de forma determinística no mesmo ponto', async () => {
