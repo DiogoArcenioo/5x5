@@ -1,9 +1,10 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { randomInt, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { DataSource, EntityManager } from 'typeorm';
 import { RankedFieldEntry } from '../ranked/ranked-cycle.service';
 import { RankedCampaign, RankedSimulationService } from '../ranked/ranked-simulation.service';
 import { attachSimulationContext, campaignDiagnosticContext } from '../shared/simulation-diagnostics';
+import { drawOpponentField, EligibleTeamLineup } from '../shared/team-field-draw';
 
 type CasualRunRow = {
   id: string;
@@ -56,9 +57,7 @@ export class CasualService {
   private select(){return`SELECT id,status,campaign,campaign_revision AS "campaignRevision",expires_at AS "expiresAt",created_at AS "createdAt",completed_at AS "completedAt" FROM casual_runs`;}
 
   private async drawField(manager:EntityManager):Promise<RankedFieldEntry[]>{
-    const rows=await manager.query<Array<{teamSlug:string;year:number}>>(`SELECT t.slug AS "teamSlug",pty.year::integer AS year FROM teams t JOIN player_team_years pty ON pty.team_id=t.id WHERE t.active=true GROUP BY t.id,t.slug,pty.year HAVING count(DISTINCT pty.player_id)>=5 ORDER BY t.slug,pty.year`);
-    const byTeam=new Map<string,number[]>();for(const row of rows){const years=byTeam.get(row.teamSlug)||[];years.push(Number(row.year));byTeam.set(row.teamSlug,years);}if(byTeam.size<15)throw new ConflictException('O catálogo precisa ter ao menos 15 times ativos com lineups completas.');
-    const teams=this.shuffle([...byTeam.keys()]).slice(0,15);return teams.map(teamSlug=>{const years=byTeam.get(teamSlug)!;return{teamSlug,year:years[randomInt(years.length)]};});
+    const rows=await manager.query<EligibleTeamLineup[]>(`SELECT t.slug AS "teamSlug",pty.year::integer AS year,avg(pty.overall)::float AS strength FROM teams t JOIN player_team_years pty ON pty.team_id=t.id WHERE t.active=true GROUP BY t.id,t.slug,pty.year HAVING count(DISTINCT pty.player_id)>=5 ORDER BY t.slug,pty.year`);
+    const field=drawOpponentField(rows);if(!field.length)throw new ConflictException('O catálogo precisa ter ao menos 15 times ativos com lineups completas.');return field;
   }
-  private shuffle<T>(items:T[]){const result=[...items];for(let index=result.length-1;index>0;index--){const selected=randomInt(index+1);[result[index],result[selected]]=[result[selected],result[index]];}return result;}
 }

@@ -1,6 +1,6 @@
 import { ConflictException, Injectable } from '@nestjs/common';
-import { randomInt } from 'node:crypto';
 import { DataSource, EntityManager } from 'typeorm';
+import { drawOpponentField, EligibleTeamLineup } from '../shared/team-field-draw';
 
 export const RANKING_TIME_ZONE = 'America/Sao_Paulo';
 
@@ -15,11 +15,6 @@ export type RankedCycleRow = {
   version: number;
   field: RankedFieldEntry[];
   createdAt: Date;
-};
-
-type EligibleLineupRow = {
-  teamSlug: string;
-  year: number;
 };
 
 @Injectable()
@@ -72,8 +67,9 @@ export class RankedCycleService {
   }
 
   private async drawField(manager: EntityManager): Promise<RankedFieldEntry[]> {
-    const rows = await manager.query<EligibleLineupRow[]>(`
-      SELECT t.slug AS "teamSlug", pty.year::integer AS year
+    const rows = await manager.query<EligibleTeamLineup[]>(`
+      SELECT t.slug AS "teamSlug", pty.year::integer AS year,
+             avg(pty.overall)::float AS strength
       FROM teams t
       JOIN player_team_years pty ON pty.team_id = t.id
       WHERE t.active = true
@@ -82,28 +78,10 @@ export class RankedCycleService {
       ORDER BY t.slug, pty.year
     `);
 
-    const yearsByTeam = new Map<string, number[]>();
-    for (const row of rows) {
-      const years = yearsByTeam.get(row.teamSlug) || [];
-      years.push(Number(row.year));
-      yearsByTeam.set(row.teamSlug, years);
-    }
-    if (yearsByTeam.size < 15) {
+    const field = drawOpponentField(rows);
+    if (!field.length) {
       throw new ConflictException('O catalogo precisa ter ao menos 15 times com lineups completas para criar o Major ranqueado.');
     }
-
-    const teams = this.shuffle([...yearsByTeam.keys()]).slice(0, 15);
-    return teams.map((teamSlug) => {
-      const years = yearsByTeam.get(teamSlug)!;
-      return { teamSlug, year: years[randomInt(years.length)] };
-    });
-  }
-
-  private shuffle<T>(items: T[]): T[] {
-    for (let index = items.length - 1; index > 0; index -= 1) {
-      const selected = randomInt(index + 1);
-      [items[index], items[selected]] = [items[selected], items[index]];
-    }
-    return items;
+    return field;
   }
 }
